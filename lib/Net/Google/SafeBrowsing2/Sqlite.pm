@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 
 
 =head1 NAME
@@ -22,6 +22,8 @@ Net::Google::SafeBrowsing2::Sqlite - Sqlite as back-end storage for the Google S
   use Net::Google::SafeBrowsing2::Sqlite;
 
   my $storage = Net::Google::SafeBrowsing2::Sqlite->new(file => 'google-v2.db');
+  ...
+  $storage->close();
 
 =head1 DESCRIPTION
 
@@ -76,11 +78,26 @@ sub new {
 
 =over 4
 
-See L<Net::Google::SafeBrowsing2::Storage> for a list of public functions.
+See L<Net::Google::SafeBrowsing2::Storage> for a complete list of public functions.
 
+=head2 close()
+
+Cleanup old full hashes, and close the connection to the database.
+
+  my $storage->clode();
+
+
+=cut
+
+sub close {
+	my ($self, %args) = @_;
+
+	$self->{dbh}->do('DELETE FROM full_hashes WHERE timestamp < ?', { }, time() - Net::Google::SafeBrowsing2::FULL_HASH_TIME);
+
+	$self->{dbh}->disconnect;
+}
 
 =back
-
 
 =cut
 
@@ -89,29 +106,28 @@ sub init {
 
 	$self->{dbh} = DBI->connect("dbi:SQLite:dbname=" . $self->{file}, "", "");
 
-	my @tables = $self->{dbh}->tables; #("%", "", "", "");
-# 	my @tables = $self->{dbh}->tables("%", "main", "", "");
+	my @tables = $self->{dbh}->tables;
 
-# 	foreach my $table (@tables) {
-# 		print $table, "\n";
-# 	}
-
-	if (! defined first { $_ eq '"main"."updates"' } @tables) {
+	if (! defined first { $_ eq '"main"."updates"' || $_ eq '"updates"' } @tables) {
 		$self->create_table_updates();
 	}
-	if (! defined first { $_ eq '"main"."a_chunks"' } @tables) {
+	if (! defined first { $_ eq '"main"."a_chunks"' ||  $_ eq '"a_chunks"' } @tables) {
 		$self->create_table_a_chunks();
 	}
-	if (! defined first { $_ eq '"main"."s_chunks"' } @tables) { 
+	if (! defined first { $_ eq '"main"."s_chunks"' || $_ eq '"s_chunks"' } @tables) { 
 		$self->create_table_s_chunks();
 	}
-	if (! defined first { $_ eq '"main"."full_hashes"' } @tables) {
+	if (! defined first { $_ eq '"main"."full_hashes"' || $_ eq '"full_hashes"' } @tables) {
 		$self->create_table_full_hashes();
 	}
-	if (! defined first { $_ eq '"main"."full_hashes_errors"' } @tables) { 
+	if (! defined first { $_ eq '"main"."full_hashes_errors"' || $_ eq '"full_hashes_errors"' } @tables) { 
 		$self->create_table_full_hashes_errors();
 	}
+	if (! defined first { $_ eq '"main"."mac_keys"' || $_ eq '"mac_keys"' } @tables) { 
+		$self->create_table_mac_keys();
+	}
 }
+
 
 sub create_table_updates {
 	my ($self, %args) = @_;
@@ -222,6 +238,19 @@ sub create_table_full_hashes_errors {
 			errors INTEGER,
 			prefix TEXT,
 			timestamp INTEGER
+		);
+	};
+
+	$self->{dbh}->do($schema);
+}
+
+sub create_table_mac_keys{
+	my ($self, %args) = @_;
+
+	my $schema = qq{
+		CREATE TABLE mac_keys (
+			client_key TEXT Default '',
+			wrapped_key TEXT Default ''
 		);
 	};
 
@@ -451,7 +480,7 @@ sub full_hash_error {
 	my $rows = $self->{dbh}->selectall_arrayref("SELECT id, errors FROM full_hashes_errors WHERE prefix = ? LIMIT 1", { Slice => {} }, $prefix);
 
 	if (scalar @$rows == 0) {
-		$self->{dbh}->do("INSERT INTO full_hashes_errors (prefix, errors, timestamp) VALUES (?, 1, ?)", $prefix, $timestamp);
+		$self->{dbh}->do("INSERT INTO full_hashes_errors (prefix, errors, timestamp) VALUES (?, 1, ?)", { }, $prefix, $timestamp);
 	}
 	else {
 		my $errors = $rows->[0]->{errors} + 1;
@@ -485,6 +514,53 @@ sub get_full_hash_error {
 		return $rows->[0];
 	}
 }
+
+sub get_mac_keys {
+	my ($self, %args) 	= @_;
+
+
+	my $rows = $self->{dbh}->selectall_arrayref("SELECT client_key, wrapped_key FROM mac_keys LIMIT 1", { Slice => {} });
+
+	if (scalar @$rows == 0) {
+		return { client_key => '', wrapped_key => '' };
+	}
+	else {
+		return $rows->[0];
+	}
+}
+
+sub add_mac_keys {
+	my ($self, %args) 	= @_;
+	my $client_key		= $args{client_key}		|| '';
+	my $wrapped_key		= $args{wrapped_key}	|| '';
+
+
+	$self->delete_mac_keys();
+
+	$self->{dbh}->do("INSERT INTO mac_keys (client_key, wrapped_key) VALUES (?, ?)", { }, $client_key, $wrapped_key);
+
+}
+
+sub delete_mac_keys {
+	my ($self, %args) 	= @_;
+
+	$self->{dbh}->do("DELETE FROM mac_keys WHERE 1");
+}
+
+=head1 CHANGELOG
+
+=over 4
+
+=item 0.2
+
+Add close() function to clean up old full hashes, and to close the connection to the database cleanly.
+
+Add table and function to store and retrieve the Message Authentication Code (MAC) key.
+
+In some environments, the module was trying to re-create exising tables. Fixed (Thank you to  Luis Alberto Perez).
+
+=back
+
 
 =head1 SEE ALSO
 

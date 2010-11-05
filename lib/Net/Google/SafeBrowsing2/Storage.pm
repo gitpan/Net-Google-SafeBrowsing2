@@ -7,7 +7,7 @@ use warnings;
 use Carp;
 
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 
 =head1 NAME
 
@@ -722,7 +722,7 @@ sub full_hash_ok {
 
 Save information about a successful attempt to retrieve a full hash
 
-	my $info$storage->get_full_hash_error(prefix => HEX);
+	my $info = $storage->get_full_hash_error(prefix => HEX);
 
 
 Arguments
@@ -764,6 +764,92 @@ sub get_full_hash_error {
 
 	# some error
 	# return { timestamp => time(), errors => 3 }
+}
+
+=head2 get_mac_keys()
+
+Retrieve the Message Authentication Code (MAC) keys.
+
+	my $keys = $storage->get_mac_keys();
+
+
+No arguments
+
+
+Return value
+
+=over 4
+
+
+Hash reference in the following format:
+
+	{
+		client_key 	=> '',
+		wrapped_key	=> ''
+	}
+
+=back
+
+=cut
+
+sub get_mac_keys {
+	my ($self, %args) 	= @_;
+
+
+	# return { client_key => '', wrapped_key => '' }
+}
+
+=head2 delete_add_keys()
+
+Add the Message Authentication Code (MAC) keys.
+
+	$storage->delete_mac_keys(client_key => 'KEY', wrapped_key => 'KEY');
+
+
+Arguments
+
+=over 4
+
+=item client_key
+
+Required. Client key.
+
+=item wrapped_key
+
+Required. Wrapped key.
+
+=back
+
+No return value
+
+=cut
+
+sub add_mac_keys {
+	my ($self, %args) 	= @_;
+	my $client_key		= $args{client_key}		|| '';
+	my $wrapped_key		= $args{wrapped_key}	|| '';
+
+	# INSERT INTO ...
+
+}
+
+=head2 delete_mac_keys()
+
+Delete the Message Authentication Code (MAC) keys.
+
+	$storage->delete_mac_keys();
+
+
+No arguments
+
+No return value
+
+=cut
+
+sub delete_mac_keys {
+	my ($self, %args) 	= @_;
+
+	$self->{dbh}->do("DELETE FROM mac_keys WHERE 1");
 }
 
 =back
@@ -813,6 +899,16 @@ sub ascii_to_hex {
 
 	return $hex;
 }
+
+=back
+
+=head1 CHANGELOG
+
+=over 4
+
+=item 0.2
+
+Add functions to store and retrieve Message Authentication Code (MAC) keys.
 
 =back
 

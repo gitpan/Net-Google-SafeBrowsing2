@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Net-Google-SafeBrowsing2
-version:            0.1
+version:            0.2
 abstract:           Perl extension Google Safe Browsing v2
 author:
     - Julien Sobrier <julien@sobrier.net>
@@ -11,15 +11,18 @@ configure_requires:
 build_requires:
     ExtUtils::MakeMaker:  0
 requires:
-    constant:        0
-    Digest::SHA:     0
-    List::Util:      0
-    LWP::UserAgent:  0
-    Net::IPAddress:  0
-    Switch:          0
-    Test::More:      0
-    Text::Trim:      0
-    URI:             0
+    constant:             0
+    Digest::HMAC_SHA1:    0
+    Digest::SHA:          0
+    List::Util:           0
+    LWP::UserAgent:       0
+    MIME::Base64:         0
+    MIME::Base64::URLSafe:  0
+    Net::IPAddress:       0
+    Switch:               0
+    Test::More:           0
+    Text::Trim:           0
+    URI:                  0
 no_index:
     directory:
         - t

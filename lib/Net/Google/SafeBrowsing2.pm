@@ -11,11 +11,15 @@ use List::Util qw(first);
 use Switch;
 use Net::IPAddress;
 use Text::Trim;
+use Digest::HMAC_SHA1 qw(hmac_sha1 hmac_sha1_hex);
+use MIME::Base64::URLSafe;
+use MIME::Base64;
+
 
 use Exporter 'import';
-our @EXPORT = qw(INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
+our @EXPORT = qw(MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 
 
 =head1 NAME
@@ -44,8 +48,6 @@ Net::Google::SafeBrowsing2 - Perl extension Google Safe Browsing v2
 
 Net::Google::SafeBrowsing2 implements (most of) the Google Safe Browsing v2 API.
 
-This version does not handle Message Authentication Code (MAC).
-
 The library passes most of the unit tests listed in the API documentation. See the documentation (L<http://code.google.com/apis/safebrowsing/developers_guide_v2.html>) for more details about the failed tests.
 
 The Google Safe Browsing database must be stored and managed locally. I wrote Net::Google::SafeBrowsing2::Sqlite to use Sqlite as the storage back-end. Other storage mechanisms (databases, memory, etc.) can be added and used transparently with this module.
@@ -55,6 +57,14 @@ The Google Safe Browsing database must be stored and managed locally. I wrote Ne
 Several  constants are exported by this module:
 
 =over 4
+
+=item MAC_ERROR
+
+The replies from Google could not be validated wit hthe MAC keys.
+
+=item MAC_KEY_ERROR
+
+The request for the MAC keys failed.
 
 =item INTERNAL_ERROR
 
@@ -89,6 +99,8 @@ Name of the Phishing list in Google Safe Browsing (shortcut to 'googpub-phish-sh
 =cut
 
 use constant {
+	MAC_ERROR		=> -5,
+	MAC_KEY_ERROR	=> -4,
 	INTERNAL_ERROR	=> -3,	# internal/parsing error
 	SERVER_ERROR	=> -2, 	# Server sent an error back
 	NO_UPDATE		=> -1,	# no update (too early)
@@ -112,6 +124,7 @@ Create a Net::Google::SafeBrowsing2 object
 	key 	=> "my key", 
 	storage	=> Net::Google::SafeBrowsing2::Sqlite->new(file => 'google-v2.db'),
 	debug	=> 0,
+	mac		=> 0,
 	list	=> MALWARE,
   );
 
@@ -130,6 +143,10 @@ Required. Object which handle the storage for the Google Safe Browsing database.
 =item list
 
 Optional. The Google Safe Browsing list to handle. By default, handles both MALWARE and PHISHING.
+
+=item mac
+
+Optional. Set to 1 to enable Message Authentication Code (MAC). 0 (disabled) by default.
 
 =item debug
 
@@ -155,6 +172,7 @@ sub new {
 		key			=> '',
 		version		=> '2.2',
 		debug		=> 0,
+		mac			=> 0,
 
 		%args,
 	};
@@ -186,6 +204,8 @@ Return the status of the update (see the list of constants above): INTERNAL_ERRO
 
 This function can handle two lists at the same time. If one of the list should not be updated, it will automatically skip it and update the other one. It is faster to update two lists at once rather than doing them one by one.
 
+NOTE: If you start with an empty database, you will need to perform several updates to retrieve all the Google Safe Brosing information. This is a limitation of the Google API, not of this module.
+
 
 Arguments
 
@@ -194,6 +214,10 @@ Arguments
 =item list
 
 Optional. Update a specific list. Use the list(s) from new() by default.
+
+=item mac
+
+Optional. Set to 1 to enable Message Authentication Code (MAC). Use the value from new() by default.
 
 =item force
 
@@ -210,6 +234,7 @@ sub update {
 # 	my @lists 			= @{[$args{list}]}	|| @{$self->{list}} || croak "Missing list name\n";
 	my $list			= $args{list};
 	my $force 			= $args{force}	|| 0;
+	my $mac				= $args{mac}	|| $self->{mac}	|| 0;
 
 
 	my @lists = @{$self->{list}};
@@ -239,10 +264,24 @@ sub update {
 		return NO_UPDATE;
 	}
 	
+	# MAC?
+	my $client_key = '';
+	my $wrapped_key = '';
+
+	if ($mac) {
+		($client_key, $wrapped_key) = $self->get_mac_keys();
+
+		if ($client_key eq '' || $wrapped_key eq '') {
+			return MAC_KEY_ERROR;
+		}
+	}
+		
+
 
 	my $ua = $self->ua;
 
 	my $url = "http://safebrowsing.clients.google.com/safebrowsing/downloads?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
+	$url .= "&wrkey=$wrapped_key" if ($mac);
 
 	my $body = '';
 	foreach my $list (@lists) {
@@ -259,7 +298,9 @@ sub update {
 			$chunks_list .= "s:$s_range";
 		}
 
-		$body .= "$list;$chunks_list\n"
+		$body .= "$list;$chunks_list";
+		$body .= ":mac" if ($mac);
+		$body .= "\n";
 	}
 
 
@@ -295,9 +336,14 @@ sub update {
 			$self->debug("List: $1\n");
 			$list = $1;
 		}
+		elsif ($line =~ /u:\s*(\S+),(\S+)\s*$/) {
+			$self->debug("Redirection: $1\n");
+			$self->debug("MAC: $2\n");
+			push(@redirections, [$1, $list, $2]);
+		}
 		elsif ($line =~ /u:\s*(\S+)\s*$/) {
 			$self->debug("Redirection: $1\n");
-			push(@redirections, [$1, $list]);
+			push(@redirections, [$1, $list, '']);
 		}
 		elsif ($line =~ /ad:(\S+)$/) {
 			$self->debug("Delete Add Chunks: $1\n");
@@ -318,6 +364,26 @@ sub update {
 
 			$result = 1;
 		}
+		elsif ($line =~ /m:(\S+)$/ && $mac) {
+			my $hmac = $1;
+			$self->debug("MAC of request: $hmac\n");
+
+			# Remove this line for data
+			my $data = $res->decoded_content;
+			$data =~ s/^m:(\S+)\n//g;
+
+			if (! $self->validate_data_mac(data => $data, key => $client_key, digest => $hmac) ) {
+				$self->debug("MAC error on main request\n");
+
+				return MAC_ERROR;
+			}
+		}
+		elsif ($line =~ /e:pleaserekey/ && $mac) {
+			$self->Debug("MAC key has been expired\n");
+
+			$self->{storage}->delete_mac_keys();
+			return $self->update(list => $list, force => $force, mac => $mac);
+		}
 	}
 	$self->debug("\n");
 
@@ -327,8 +393,9 @@ sub update {
 	foreach my $data (@redirections) {
 		my $redirection = $data->[0];
 		$list = $data->[1];
+		my $hmac = $data->[2];
 
-		$self->debug("Checking redirection http://$redirection\n");
+		$self->debug("Checking redirection http://$redirection ($list)\n");
 		$res = $ua->get("http://$redirection");
 		if (! $res->is_success) {
 			$self->debug("Request to $redirection failed\n");
@@ -340,9 +407,16 @@ sub update {
 			return SERVER_ERROR;
 		}
 	
-		$self->debug(substr($res->content, 0, 250), "\n\n");
+		$self->debug(substr($res->as_string, 0, 250) . "\n\n");
+		$self->debug(substr($res->content, 0, 250) . "\n\n");
 	
 		my $data = $res->content;
+		if ($mac && ! $self->validate_data_mac(data => $data, key => $client_key, digest => $hmac) ) {
+			$self->debug("MAC error on redirection\n");
+			$self->debug("Length of data: " . length($data) . "\n");
+
+			return MAC_ERROR;
+		}
 	
 		my $chunk_num = 0;
 		my $hash_length = 0;
@@ -391,6 +465,12 @@ sub update {
 				$self->debug("$type$chunk_num:$hash_length:$chunk_length OK\n");
 			
 			}
+# 			elsif ($data =~ /e:pleaserekey/ && $mac) { # May neverr happen here?
+# 				$self->Debug("MAC key has been expired (redirection)\n");
+# 	
+# 				$self->{storage}->delete_mac_keys();
+# 				return $self->update(list => $list, force => $force, mac => $mac);
+# 			}
 			else {
 				$self->debug("ERROR - could not parse header\n");
 
@@ -607,8 +687,7 @@ sub lookup_suffix {
 	foreach my $add_chunk (@add_chunks) {
 		
 		my @hashes = $self->{storage}->get_full_hashes( chunknum => $add_chunk->{chunknum}, timestamp => time() - FULL_HASH_TIME, list => $add_chunk->{list});
-																																   # Do time filtering here instead of storage?
-																																   # TODO: Need to delete old hashes
+
 		$self->debug("Full hashes already stored for chunk " . $add_chunk->{chunknum} . ": " . scalar @hashes . "\n");
 		foreach my $full_hash (@full_hashes) {
 			foreach my $hash (@hashes) {
@@ -658,6 +737,103 @@ sub lookup_suffix {
 	return '';
 }
 
+
+=head2 request_key()
+
+Request the Message Authentication Code (MAC) keys
+
+=cut
+
+sub get_mac_keys {
+	my ($self, %args) = @_;
+
+	my $keys = $self->{storage}->get_mac_keys();
+
+	if ($keys->{client_key} eq '' || $keys->{wrapped_key} eq '') {
+		my ($client_key, $wrapped_key) = $self->request_mac_keys();
+
+# 		$self->debug("Client key: $client_key\n");
+		$self->{storage}->add_mac_keys(client_key => $client_key, wrapped_key => $wrapped_key);
+
+		return ($client_key, $wrapped_key);
+	}
+
+	return ($keys->{client_key}, $keys->{wrapped_key});
+}
+
+
+=head2 request_mac_keys()
+
+Request the Message Authentication Code (MAC) keys from Google.
+
+=cut
+
+sub request_mac_keys {
+	my ($self, %args) = @_;
+
+	my $client_key = '';
+	my $wrapped_key = '';
+
+	my $url = "http://sb-ssl.google.com/safebrowsing/newkey?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
+
+	my $res = $self->ua->get($url);
+
+	if (! $res->is_success) {
+		$self->debug("Key request failed: " . $res->code . "\n");
+		return ($client_key, $wrapped_key);
+	}
+
+	
+
+	my $data = $res->decoded_content;
+	if ($data =~ s/^clientkey:(\d+)://mi) {
+		my $length = $1;
+		$self->debug("MAC client key length: $length\n");
+		$client_key = substr($data, 0, $length, '');
+		$self->debug("MAC client key: $client_key\n");
+
+		substr($data, 0, 1, ''); # remove \n
+
+		if ($data =~ s/^wrappedkey:(\d+)://mi) {
+			$length = $1;
+			$self->debug("MAC wrapped key length: $length\n");
+			$wrapped_key = substr($data, 0, $length, '');
+			$self->debug("MAC wrapped key: $wrapped_key\n");
+
+			return (decode_base64($client_key), $wrapped_key);
+		}
+		else {
+			return ('', '');
+		}
+	}
+
+	return ($client_key, $wrapped_key);
+}
+
+=head2 validate_data_mac()
+
+Validate data against the MAC keys.
+
+=cut
+
+sub validate_data_mac {
+	my ($self, %args) = @_;
+	my $data 			= $args{data}	|| '';
+	my $key 			= $args{key}	|| '';
+	my $digest			= $args{digest}	|| '';
+
+
+# 	my $hash = urlsafe_b64encode trim hmac_sha1($data, decode_base64($key));
+# 	my $hash = urlsafe_b64encode (trim (hmac_sha1($data, decode_base64($key))));
+	my $hash = urlsafe_b64encode(hmac_sha1($data, $key));
+	$hash .= '=';
+
+	$self->debug("$hash / $digest\n");
+# 	$self->debug(urlsafe_b64encode(hmac_sha1($data, decode_base64($key))) . "\n");
+# 	$self->debug(urlsafe_b64encode(trim(hmac_sha1($data, decode_base64($key)))) . "\n");
+
+	return ($hash eq $digest);
+}
 
 =head2 update_error()
 
@@ -1375,6 +1551,16 @@ sub expand_range {
 	return @list;
 }
 
+
+=back
+
+=head1 CHANGELOG
+
+=over 4
+
+=item 0.2
+
+Add support for Message Authentication Code (MAC)
 
 =back
 
