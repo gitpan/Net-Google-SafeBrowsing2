@@ -10,7 +10,6 @@ WriteMakefile(
 		URI				=> 0,
 		Digest::SHA			=> 0,
 		List::Util			=> 0,
-		Switch				=> 0,
 		constant			=> 0,
 		Net::IPAddress			=> 0,
 		Test::More			=> 0,

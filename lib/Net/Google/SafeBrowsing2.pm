@@ -8,7 +8,6 @@ use LWP::UserAgent;
 use URI;
 use Digest::SHA qw(sha256);
 use List::Util qw(first);
-use Switch;
 use Net::IPAddress;
 use Text::Trim;
 use Digest::HMAC_SHA1 qw(hmac_sha1 hmac_sha1_hex);
@@ -19,12 +18,12 @@ use MIME::Base64;
 use Exporter 'import';
 our @EXPORT = qw(MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '0.2';
+our $VERSION = '0.3';
 
 
 =head1 NAME
 
-Net::Google::SafeBrowsing2 - Perl extension Google Safe Browsing v2
+Net::Google::SafeBrowsing2 - Perl extension for the Google Safe Browsing v2 API.
 
 =head1 SYNOPSIS
 
@@ -108,7 +107,8 @@ use constant {
 	SUCCESSFUL		=> 1,	# data sent
 	MALWARE			=> 'goog-malware-shavar',
 	PHISHING		=> 'googpub-phish-shavar',
-	FULL_HASH_TIME	=> 45 * 60 * 60,
+	FULL_HASH_TIME	=> 45 * 60,
+	INTERVAL_FULL_HASH_TIME => 'INTERVAL 45 MINUTE',
 };
 
 
@@ -204,7 +204,7 @@ Return the status of the update (see the list of constants above): INTERNAL_ERRO
 
 This function can handle two lists at the same time. If one of the list should not be updated, it will automatically skip it and update the other one. It is faster to update two lists at once rather than doing them one by one.
 
-NOTE: If you start with an empty database, you will need to perform several updates to retrieve all the Google Safe Brosing information. This is a limitation of the Google API, not of this module.
+NOTE: If you start with an empty database, you will need to perform several updates to retrieve all the Google Safe Browsing information. This is a limitation of the Google API, not of this module.
 
 
 Arguments
@@ -850,26 +850,13 @@ sub update_error {
 	my $errors = $info->{'errors'} + 1;
 	my $wait = 0;
 
-	switch($errors) {
-		case 1 {
-			$wait = 60;
-		}
-		case 2 {
-			$wait = int(30 * 60 * (rand(1) + 1)); # 30-60 mins
-		}
-		case 3 {
-			$wait = int(60 * 60 * (rand(1) + 1)); # 60-120 mins
-		}
-		case 4 {
-			$wait = int(2 * 60 * 60 * (rand(1) + 1)); # 120-240 mins
-		}
-		case 5 {
-			$wait = int(4 * 60 * 60 * (rand(1) + 1)); # 240-480 mins
-		}
-		else {
-			$wait = 480 * 60;
-		}
-	}
+	$wait = $errors == 1 ? 60
+		: $errors == 2 ? int(30 * 60 * (rand(1) + 1)) # 30-60 mins
+	    : $errors == 3 ? int(60 * 60 * (rand(1) + 1)) # 60-120 mins
+	    : $errors == 4 ? int(2 * 60 * 60 * (rand(1) + 1)) # 120-240 mins
+	    : $errors == 5 ? int(4 * 60 * 60 * (rand(1) + 1)) # 240-480 mins
+	    : $errors  > 5 ? 480 * 60
+		: 0;
 
 	$self->{storage}->update_error('time' => $time, list => $list, 'wait' => $wait, errors => $errors);
 
@@ -1346,37 +1333,25 @@ sub request_full_hash {
 
 # 	# Handle errors
 	my $i = 0;
+	my $errors;
+	my $delay = sub {
+    	my $time = shift;
+		if ((time() - $errors->{timestamp}) < $time) {
+			splice(@$prefixes, $i, 1);
+		}
+		else {
+			$i++;
+		}
+	};
+
 	while ($i < scalar @$prefixes) {
 		my $prefix = $prefixes->[$i];
 
-		my $errors = $self->{storage}->get_full_hash_error(prefix => $prefix);
+		$errors = $self->{storage}->get_full_hash_error(prefix => $prefix);
 		if (defined $errors && $errors->{errors} > 2) { # 2 errors is OK
-			switch( $errors->{errors} ) {
-				case 3 { 
-					if ((time() - $errors->{timestamp}) < 30 * 60) { # 30 minute
-						splice(@$prefixes, $i, 1);
-					}
-					else {
-						$i++;
-					}
-				}
-				case 4 { 
-					if ((time() - $errors->{timestamp}) < 60 * 60) { # 1 hour
-						splice(@$prefixes, $i, 1);
-					}
-					else {
-						$i++;
-					}
-				}
-				else { 
-					if ((time() - $errors->{timestamp}) < 2 * 60 * 60) { # 2 hours
-						splice(@$prefixes, $i, 1);
-					}
-					else {
-						$i++;
-					}
-				}
-			}
+			$errors->{errors} == 3 ? $delay->(30 * 60) # 30 minutes
+		    	: $errors->{errors} == 4 ? $delay->(60 * 60) # 1 hour
+		      	: $delay->(2 * 60 * 60); # 2 hours
 		}
 		else {
 			$i++;
@@ -1561,6 +1536,14 @@ sub expand_range {
 =item 0.2
 
 Add support for Message Authentication Code (MAC)
+
+=item 0.3
+
+Fix typos in the documentation.
+
+Remove dependency on Switch (thanks to Curtis Jewel).
+
+Fix value of FULL_HASH_TIME.
 
 =back
 
