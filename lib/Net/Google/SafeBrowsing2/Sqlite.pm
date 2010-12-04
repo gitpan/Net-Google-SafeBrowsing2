@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.3';
+our $VERSION = '0.4';
 
 
 =head1 NAME
@@ -84,7 +84,7 @@ See L<Net::Google::SafeBrowsing2::Storage> for a complete list of public functio
 
 Cleanup old full hashes, and close the connection to the database.
 
-  my $storage->close();
+  $storage->close();
 
 
 =cut
@@ -105,6 +105,8 @@ sub init {
 	my ($self, %args) = @_;
 
 	$self->{dbh} = DBI->connect("dbi:SQLite:dbname=" . $self->{file}, "", "");
+	$self->{dbh}->do("PRAGMA journal_mode = OFF");
+	$self->{dbh}->do("PRAGMA synchronous = OFF"); 
 
 	my @tables = $self->{dbh}->tables;
 
@@ -265,12 +267,18 @@ sub add_chunks {
 	my $chunks			= $args{chunks}		|| [];
 	my $list			= $args{'list'}		|| '';
 
+# 	$self->{dbh}->do("PRAGMA journal_mode = OFF");
+# 	$self->{dbh}->do("PRAGMA synchronous = OFF"); 
+
 	if ($type eq 's') {
 		$self->add_chunks_s(chunknum => $chunknum, chunks => $chunks, list => $list);
 	}
 	elsif ($type eq 'a') {
 		$self->add_chunks_a(chunknum => $chunknum, chunks => $chunks, list => $list);
 	}
+
+# 	$self->{dbh}->do("PRAGMA journal_mode = DELETE");
+# 	$self->{dbh}->do("PRAGMA synchronous = FULL"); 
 }
 
 sub add_chunks_s {
@@ -557,11 +565,15 @@ Add close() function to clean up old full hashes, and to close the connection to
 
 Add table and function to store and retrieve the Message Authentication Code (MAC) key.
 
-In some environments, the module was trying to re-create exising tables. Fixed (Thank you to  Luis Alberto Perez).
+In some environments, the module was trying to re-create existing tables. Fixed (Thank you to  Luis Alberto Perez).
 
 =item 0.3
 
 Fix typos in the documentation.
+
+=item 0.4
+
+Disable journalization. This speed up updated by about 10x.
 
 =back
 

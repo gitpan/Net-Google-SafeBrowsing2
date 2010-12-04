@@ -18,7 +18,7 @@ use MIME::Base64;
 use Exporter 'import';
 our @EXPORT = qw(MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '0.3';
+our $VERSION = '0.4';
 
 
 =head1 NAME
@@ -42,6 +42,8 @@ Net::Google::SafeBrowsing2 - Perl extension for the Google Safe Browsing v2 API.
   if ($match eq MALWARE) {
 	print "http://www.gumblar.cn/ is flagged as a dangerous site\n";
   }
+
+  $storage->close();
 
 =head1 DESCRIPTION
 
@@ -360,7 +362,7 @@ sub update {
 			$self->debug("Delete Sub Chunks: $1\n");
 
 			my @nums = $self->expand_range(range => $1);
-			$self->{storage}->delete_sub_ckunks(chunknums => [@nums], list => $list); # should specify the list
+			$self->{storage}->delete_sub_ckunks(chunknums => [@nums], list => $list);
 
 			$result = 1;
 		}
@@ -379,7 +381,7 @@ sub update {
 			}
 		}
 		elsif ($line =~ /e:pleaserekey/ && $mac) {
-			$self->Debug("MAC key has been expired\n");
+			$self->debug("MAC key has been expired\n");
 
 			$self->{storage}->delete_mac_keys();
 			return $self->update(list => $list, force => $force, mac => $mac);
@@ -407,8 +409,8 @@ sub update {
 			return SERVER_ERROR;
 		}
 	
-		$self->debug(substr($res->as_string, 0, 250) . "\n\n");
-		$self->debug(substr($res->content, 0, 250) . "\n\n");
+		$self->debug(substr($res->as_string, 0, 250) . "\n\n") if ($self->{debug});
+		$self->debug(substr($res->content, 0, 250) . "\n\n") if ($self->{debug});
 	
 		my $data = $res->content;
 		if ($mac && ! $self->validate_data_mac(data => $data, key => $client_key, digest => $hmac) ) {
@@ -451,7 +453,6 @@ sub update {
 				elsif ($type eq 'a:') {
 					my @chunks = $self->parse_a(value => $encoded, hash_length => $hash_length);
 					$self->{storage}->add_chunks(type => 'a', chunknum => $chunk_num, chunks => [@chunks], list => $list); # Must happen all at once => not 100% sure
-# 					$self->{a_chunks}->{$chunk_num} = [@chunks];
 				}
 				else {
 					$self->debug("ERROR - incorrect chunk type: $type, should be a: or s:\n");
@@ -555,7 +556,7 @@ sub lookup {
 
 Returns the name of all the Google Safe Browsing lists
 
-  my $@lists = $gsb->get_lists ();
+  my $@lists = $gsb->get_lists();
 
 NOTE: this function is useless in practice because Google includes some lists which cannot be used by the Google Safe Browsing API, like lists used by the Google toolbar.
 
@@ -938,7 +939,10 @@ sub parse_s {
 # 			$self->debug("$add_chunknum\n");
 
 			push(@data, { host => $host, add_chunknum => $add_chunknum, prefix => '' });
-			$self->debug("\t" . $self->hex_to_ascii($host) . " $add_chunknum\n");
+
+			if ($self->{debug}) {
+				$self->debug("\t" . $self->hex_to_ascii($host) . " $add_chunknum\n");
+			}
 		}
 		else { # ADDCHUNKNUM + PREFIX
 			for(my $i = 0; $i < $count; $i++) {
@@ -951,7 +955,10 @@ sub parse_s {
 				my $prefix = substr($value, 0, $hash_length, ''); # HEX
 
 				push(@data, { host => $host, add_chunknum => $add_chunknum, prefix =>  $prefix });
-				$self->debug("\t" . $self->hex_to_ascii($host) . " $add_chunknum " . $self->hex_to_ascii($prefix) . "\n");
+
+				if ($self->{debug}) {
+					$self->debug("\t" . $self->hex_to_ascii($host) . " $add_chunknum " . $self->hex_to_ascii($prefix) . "\n");
+				}
 			}
 		}
 	}
@@ -1544,6 +1551,10 @@ Fix typos in the documentation.
 Remove dependency on Switch (thanks to Curtis Jewel).
 
 Fix value of FULL_HASH_TIME.
+
+=item 0.4
+
+Speed update the database update. The first update went down from 20 minutes to 20 minutes.
 
 =back
 
