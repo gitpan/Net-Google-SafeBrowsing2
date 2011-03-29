@@ -18,7 +18,7 @@ use MIME::Base64;
 use Exporter 'import';
 our @EXPORT = qw(MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '0.4';
+our $VERSION = '0.5';
 
 
 =head1 NAME
@@ -51,7 +51,9 @@ Net::Google::SafeBrowsing2 implements (most of) the Google Safe Browsing v2 API.
 
 The library passes most of the unit tests listed in the API documentation. See the documentation (L<http://code.google.com/apis/safebrowsing/developers_guide_v2.html>) for more details about the failed tests.
 
-The Google Safe Browsing database must be stored and managed locally. I wrote Net::Google::SafeBrowsing2::Sqlite to use Sqlite as the storage back-end. Other storage mechanisms (databases, memory, etc.) can be added and used transparently with this module.
+The Google Safe Browsing database must be stored and managed locally. L<Net::Google::SafeBrowsing2::Sqlite> uses Sqlite as the storage back-end, L<Net::Google::SafeBrowsing2::MySQL> uses MySQL. Other storage mechanisms (databases, memory, etc.) can be added and used transparently with this module.
+
+You may want to look at "Google Safe Browsing v2: Implementation Notes" (L<http://www.zscaler.com/research/Google%20Safe%20Browsing%20v2%20API.pdf>), a collection of notes and real-world numbers about the API. This is intended for people who want to learn more about the API, whether as a user or to make their own implementation.
 
 =head1 CONSTANTS
 
@@ -140,7 +142,7 @@ Required. Your Google Safe browsing API key
 
 =item storage
 
-Required. Object which handle the storage for the Google Safe Browsing database. See Net::Google::SafeBrowsing2::Storage for more details.
+Required. Object which handle the storage for the Google Safe Browsing database. See L<Net::Google::SafeBrowsing2::Storage> for more details.
 
 =item list
 
@@ -1555,6 +1557,10 @@ Fix value of FULL_HASH_TIME.
 =item 0.4
 
 Speed update the database update. The first update went down from 20 minutes to 20 minutes.
+
+=item 0.5
+
+Update documentation.
 
 =back
 

@@ -1,4 +1,4 @@
-package Net::Google::SafeBrowsing2::Sqlite;
+package Net::Google::SafeBrowsing2::MySQL;
 
 use strict;
 use warnings;
@@ -10,24 +10,24 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.5';
+our $VERSION = '0.1';
 
 
 =head1 NAME
 
-Net::Google::SafeBrowsing2::Sqlite - Sqlite as back-end storage for the Google Safe Browsing v2 database
+Net::Google::SafeBrowsing2::MySQL - MySQL as back-end storage for the Google Safe Browsing v2 database
 
 =head1 SYNOPSIS
 
-  use Net::Google::SafeBrowsing2::Sqlite;
+  use Net::Google::SafeBrowsing2::MySQL;
 
-  my $storage = Net::Google::SafeBrowsing2::Sqlite->new(file => 'google-v2.db');
+  my $storage = Net::Google::SafeBrowsing2::MySQL->new(host => '127.0.0.1', database => 'GoogleSafeBrowsingv2');
   ...
   $storage->close();
 
 =head1 DESCRIPTION
 
-This is an implementation of L<Net::Google::SafeBrowsing2::Storage> using Sqlite.
+This is an implementation of L<Net::Google::SafeBrowsing2::Storage> using MySQL.
 
 =cut
 
@@ -38,17 +38,33 @@ This is an implementation of L<Net::Google::SafeBrowsing2::Storage> using Sqlite
 
 =head2 new()
 
-Create a Net::Google::SafeBrowsing2::Sqlite object
+Create a Net::Google::SafeBrowsing2::MySQL object
 
-  my $storage = Net::Google::SafeBrowsing2::Sqlite->new(file => 'google-v2.db');
+  my $storage = Net::Google::SafeBrowsing2::MySQL->new(host => '127.0.0.1', database => 'GoogleSafeBrowsingv2', username => 'foo', password => 'bar');
 
 Arguments
 
 =over 4
 
-=item file
+=item host
 
-Required. File to store the database.
+Required. MySQL host name
+
+=item database
+
+Required. MySQL datbase name to connect to.
+
+=item username
+
+Required. MySQL username.
+
+=item password
+
+Required. MySQL password.
+
+=item port
+
+Optional. MySQL port number to connect to.
 
 =back
 
@@ -61,7 +77,9 @@ sub new {
 	my ($class, %args) = @_;
 
 	my $self = { # default arguments
-		file		=> 'gsb2.db',
+		host		=> '127.0.0.1',
+		database	=> 'GoogleSafeBrowsingv2',
+		port		=> 3306,
 
 		%args,
 	};
@@ -94,28 +112,26 @@ Cleanup old full hashes, and close the connection to the database.
 sub init {
 	my ($self, %args) = @_;
 
-	$self->{dbh} = DBI->connect("dbi:SQLite:dbname=" . $self->{file}, "", "");
-	$self->{dbh}->do("PRAGMA journal_mode = OFF");
-	$self->{dbh}->do("PRAGMA synchronous = OFF"); 
+	$self->{dbh} = DBI->connect("DBI:mysql:database=" . $self->{database} . ";host=" . $self->{host} . ";port=" . $self->{port}, $self->{username}, $self->{password}, {'RaiseError' => 1});
 
 	my @tables = $self->{dbh}->tables;
 
-	if (! defined first { $_ eq '"main"."updates"' || $_ eq '"updates"' } @tables) {
+	if (! defined first { $_ =~ '`updates`' } @tables) {
 		$self->create_table_updates();
 	}
-	if (! defined first { $_ eq '"main"."a_chunks"' ||  $_ eq '"a_chunks"' } @tables) {
+	if (! defined first { $_ =~ '`a_chunks`' } @tables) {
 		$self->create_table_a_chunks();
 	}
-	if (! defined first { $_ eq '"main"."s_chunks"' || $_ eq '"s_chunks"' } @tables) { 
+	if (! defined first { $_ =~ '`s_chunks`' } @tables) { 
 		$self->create_table_s_chunks();
 	}
-	if (! defined first { $_ eq '"main"."full_hashes"' || $_ eq '"full_hashes"' } @tables) {
+	if (! defined first { $_ =~ '`full_hashes`' } @tables) {
 		$self->create_table_full_hashes();
 	}
-	if (! defined first { $_ eq '"main"."full_hashes_errors"' || $_ eq '"full_hashes_errors"' } @tables) { 
+	if (! defined first { $_ =~ '`full_hashes_errors`' } @tables) { 
 		$self->create_table_full_hashes_errors();
 	}
-	if (! defined first { $_ eq '"main"."mac_keys"' || $_ eq '"mac_keys"' } @tables) { 
+	if (! defined first { $_ =~ '`mac_keys`' } @tables) { 
 		$self->create_table_mac_keys();
 	}
 }
@@ -126,10 +142,10 @@ sub create_table_updates {
 
 	my $schema = qq{	
 		CREATE TABLE updates (
-			last INTEGER DEFAULT 0,
-			wait INTEGER DEFAULT 1800,
-			errors INTEGER DEFAULT 0,
-			list TEXT
+			last INT NOT NULL DEFAULT '0',
+			wait INT NOT NULL DEFAULT '0',
+			errors INT NOT NULL DEFAULT '1800',
+			list VARCHAR( 50 ) NOT NULL
 		);
 	}; # Need to handle errors
 
@@ -141,10 +157,10 @@ sub create_table_a_chunks {
 
 	my $schema = qq{
 		CREATE TABLE a_chunks (
-			hostkey TEXT,
-			prefix TEXT,
-			num INTEGER,
-			list TEXT
+			hostkey VARCHAR( 8 ),
+			prefix VARCHAR( 8 ),
+			num INT NOT NULL,
+			list VARCHAR( 50 ) NOT NULL
 		);
 	};
 
@@ -171,11 +187,11 @@ sub create_table_s_chunks {
 
 	my $schema = qq{
 		CREATE TABLE s_chunks (
-			hostkey TEXT,
-			prefix TEXT,
-			num INTEGER,
-			add_num INTEGER,
-			list TEXT
+			hostkey VARCHAR( 8 ),
+			prefix VARCHAR( 8 ),
+			num INT NOT NULL,
+			add_num INT NOT NULL,
+			list VARCHAR( 50 ) NOT NULL
 		);
 	};
 
@@ -201,11 +217,11 @@ sub create_table_full_hashes {
 
 	my $schema = qq{
 		CREATE TABLE full_hashes (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			num INTEGER,
-			hash TEXT,
-			list TEXT,
-			timestamp INTEGER
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			num INT,
+			hash VARCHAR( 32 ),
+			list VARCHAR( 50 ),
+			timestamp INT Default '0'
 		);
 	};
 
@@ -226,10 +242,10 @@ sub create_table_full_hashes_errors {
 
 	my $schema = qq{
 		CREATE TABLE full_hashes_errors (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			errors INTEGER,
-			prefix TEXT,
-			timestamp INTEGER
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			errors INT Default '0',
+			prefix VARCHAR( 8 ),
+			timestamp INT Default '0'
 		);
 	};
 
@@ -241,40 +257,14 @@ sub create_table_mac_keys{
 
 	my $schema = qq{
 		CREATE TABLE mac_keys (
-			client_key TEXT Default '',
-			wrapped_key TEXT Default ''
+			client_key VARCHAR( 50 ) Default '',
+			wrapped_key VARCHAR( 50 ) Default ''
 		);
 	};
 
 	$self->{dbh}->do($schema);
 }
 
-
-=head1 CHANGELOG
-
-=over 4
-
-=item 0.2
-
-Add close() function to clean up old full hashes, and to close the connection to the database cleanly.
-
-Add table and function to store and retrieve the Message Authentication Code (MAC) key.
-
-In some environments, the module was trying to re-create existing tables. Fixed (Thank you to  Luis Alberto Perez).
-
-=item 0.3
-
-Fix typos in the documentation.
-
-=item 0.4
-
-Disable journalization. This speeds up updated by about 10x.
-
-=item 0.5
-
-Use base class L<Net::Google::SafeBrowsing2::DBI>.
-
-=back
 
 
 =head1 SEE ALSO
@@ -283,14 +273,14 @@ See L<Net::Google::SafeBrowsing2> for handling Google Safe Browsing v2.
 
 See L<Net::Google::SafeBrowsing2::Storage> for the list of public functions.
 
-See L<Net::Google::SafeBrowsing2::MySQL> for a back-end using Sqlite.
+See L<Net::Google::SafeBrowsing2::Sqlite> for a back-end using Sqlite.
 
 Google Safe Browsing v2 API: L<http://code.google.com/apis/safebrowsing/developers_guide_v2.html>
 
 
 =head1 AUTHOR
 
-Julien Sobrier, E<lt>jsobrier@zscaler.comE<gt> or E<lt>julien@sobrier.netE<gt>
+Julien Sobrier, E<lt>jsobrier@zscaler.com<gt> or E<lt>julien@sobrier.netE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 

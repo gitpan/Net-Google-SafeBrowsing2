@@ -6,3 +6,7 @@ Revision history for Perl extension Net::Google::SafeBrowsing2.
 0.2 Fri Nov 05 14:45:48 2010
         - add support for MAC
 
+0.5 Mon Mar 07 16:55:00 2011
+		- add MySQl back-end storage
+        - introduce base class Net::Google::SafeBrowsing2::DBI
+		- update documentation
