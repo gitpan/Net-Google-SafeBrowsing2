@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 
 
 =head1 NAME
@@ -428,9 +428,10 @@ sub add_full_hashes {
 	my $full_hashes		= $args{full_hashes}	|| [];
 
 	foreach my $hash (@$full_hashes) {
-		$self->{dbh}->do("INSERT OR REPLACE INTO full_hashes (num, hash, list, timestamp) VALUES (?, ?, ?, ?)", { }, $hash->{chunknum}, $hash->{hash}, $hash->{list}, $timestamp);
+# 		$self->{dbh}->do("INSERT OR REPLACE INTO full_hashes (num, hash, list, timestamp) VALUES (?, ?, ?, ?)", { }, $hash->{chunknum}, $hash->{hash}, $hash->{list}, $timestamp);
+		$self->{dbh}->do("DELETE FROM full_hashes WHERE num = ? AND hash = ? AND list = ?", { }, $hash->{chunknum}, $hash->{hash}, $hash->{list});
+		$self->{dbh}->do("INSERT INTO full_hashes (num, hash, list, timestamp) VALUES (?, ?, ?, ?)", { }, $hash->{chunknum}, $hash->{hash}, $hash->{list}, $timestamp);
 	}
-
 }
 
 sub delete_full_hashes {
@@ -520,6 +521,16 @@ sub delete_mac_keys {
 	$self->{dbh}->do("DELETE FROM mac_keys WHERE 1");
 }
 
+
+=head1 CHANGELOG
+
+=over 4
+
+=item 0.2
+
+Replace "INSERT ORE REPLACE" satements by DELETE + INSERT to work with all databases
+
+=back
 
 =head1 SEE ALSO
 

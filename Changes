@@ -10,3 +10,6 @@ Revision history for Perl extension Net::Google::SafeBrowsing2.
 		- add MySQl back-end storage
         - introduce base class Net::Google::SafeBrowsing2::DBI
 		- update documentation
+
+    Tue Apr 05 14:40:00 2011
+		- fix Net::Google::SafeBrowsing2::DBI to work with all database types
