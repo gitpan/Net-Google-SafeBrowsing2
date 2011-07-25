@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 
 
 =head1 NAME
@@ -40,7 +40,12 @@ This is an implementation of L<Net::Google::SafeBrowsing2::Storage> using MySQL.
 
 Create a Net::Google::SafeBrowsing2::MySQL object
 
-  my $storage = Net::Google::SafeBrowsing2::MySQL->new(host => '127.0.0.1', database => 'GoogleSafeBrowsingv2', username => 'foo', password => 'bar');
+  my $storage = Net::Google::SafeBrowsing2::MySQL->new(
+      host     => '127.0.0.1', 
+      database => 'GoogleSafeBrowsingv2', 
+      username => 'foo', 
+      password => 'bar'
+  );
 
 Arguments
 
@@ -52,7 +57,7 @@ Required. MySQL host name
 
 =item database
 
-Required. MySQL datbase name to connect to.
+Required. MySQL database name to connect to.
 
 =item username
 

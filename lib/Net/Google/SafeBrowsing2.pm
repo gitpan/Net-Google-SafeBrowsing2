@@ -16,9 +16,9 @@ use MIME::Base64;
 
 
 use Exporter 'import';
-our @EXPORT = qw(MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
+our @EXPORT = qw(DATABASE_RESET MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '0.5';
+our $VERSION = '0.6';
 
 
 =head1 NAME
@@ -61,9 +61,13 @@ Several  constants are exported by this module:
 
 =over 4
 
+=item DATABASE_RESET
+
+Google requested to reset (empty) the local database.
+
 =item MAC_ERROR
 
-The replies from Google could not be validated wit hthe MAC keys.
+The replies from Google could not be validated with the MAC keys.
 
 =item MAC_KEY_ERROR
 
@@ -102,6 +106,7 @@ Name of the Phishing list in Google Safe Browsing (shortcut to 'googpub-phish-sh
 =cut
 
 use constant {
+	DATABASE_RESET	=> -6,
 	MAC_ERROR		=> -5,
 	MAC_KEY_ERROR	=> -4,
 	INTERNAL_ERROR	=> -3,	# internal/parsing error
@@ -387,6 +392,13 @@ sub update {
 
 			$self->{storage}->delete_mac_keys();
 			return $self->update(list => $list, force => $force, mac => $mac);
+		}
+		elsif ($line =~ /r:pleasereset/) {
+			$self->debug("Databse must be reset\n");
+
+			$self->{storage}->reset(list => $list);
+
+			return DATABASE_RESET;
 		}
 	}
 	$self->debug("\n");
@@ -1561,6 +1573,10 @@ Speed update the database update. The first update went down from 20 minutes to 
 =item 0.5
 
 Update documentation.
+
+=item 0.6
+
+Handle local database reset.
 
 =back
 

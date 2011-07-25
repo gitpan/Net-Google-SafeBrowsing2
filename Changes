@@ -13,3 +13,6 @@ Revision history for Perl extension Net::Google::SafeBrowsing2.
 
     Tue Apr 05 14:40:00 2011
 		- fix Net::Google::SafeBrowsing2::DBI to work with all database types
+
+0.6 Mon Jul 25 13:21:00 2011
+		- Handle local database reset

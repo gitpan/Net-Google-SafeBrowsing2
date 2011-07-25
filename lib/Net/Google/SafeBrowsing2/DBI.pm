@@ -10,12 +10,12 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.2';
+our $VERSION = '0.3';
 
 
 =head1 NAME
 
-Net::Google::SafeBrowsing2::DBI - BAse class for all DBI-based back-end storage for the Google Safe Browsing v2 database
+Net::Google::SafeBrowsing2::DBI - Base class for all DBI-based back-end storage for the Google Safe Browsing v2 database
 
 =head1 SYNOPSIS
 
@@ -521,6 +521,28 @@ sub delete_mac_keys {
 	$self->{dbh}->do("DELETE FROM mac_keys WHERE 1");
 }
 
+sub reset {
+	my ($self, %args) 	= @_;
+	my $chunknum		= $args{chunknum}	|| 0;
+	my $chunks			= $args{chunks}		|| [];
+	my $list			= $args{'list'}		|| '';
+
+	my $sth = $self->{dbh}->prepare('DELETE FROM s_chunks WHERE list = ?');
+	$sth->execute( $list );
+
+	$sth = $self->{dbh}->prepare('DELETE FROM a_chunks WHERE list = ?');
+	$sth->execute( $list );
+
+	$sth = $self->{dbh}->prepare('DELETE FROM full_hashes WHERE list = ?');
+	$sth->execute( $list );
+
+	$sth = $self->{dbh}->prepare('DELETE FROM full_hashes_errors WHERE list = ?');
+	$sth->execute( $list );
+
+	$sth = $self->{dbh}->prepare('DELETE FROM updates WHERE list = ?');
+	$sth->execute( $list );
+}
+
 
 =head1 CHANGELOG
 
@@ -528,7 +550,11 @@ sub delete_mac_keys {
 
 =item 0.2
 
-Replace "INSERT ORE REPLACE" satements by DELETE + INSERT to work with all databases
+Replace "INSERT ORE REPLACE" statements by DELETE + INSERT to work with all databases
+
+=item 0.3
+
+Add reset function to reset all tables for a given list
 
 =back
 

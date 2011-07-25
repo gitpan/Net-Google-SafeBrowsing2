@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Net-Google-SafeBrowsing2
-version:            0.5
+version:            0.6
 abstract:           Perl extension for the Google Safe Browsing v2 API.
 author:
     - Julien Sobrier <julien@sobrier.net>
