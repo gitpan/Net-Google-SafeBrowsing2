@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.5';
+our $VERSION = '0.6';
 
 
 =head1 NAME
@@ -164,6 +164,27 @@ sub create_table_a_chunks {
 		);
 	};
 	$self->{dbh}->do($index);
+
+	$index = qq{
+		CREATE UNIQUE INDEX a_chunks_unique ON a_chunks (
+			hostkey,
+			prefix,
+			num,
+			list
+		);
+	};
+	$self->{dbh}->do($index);
+
+	$index = qq{
+		CREATE UNIQUE INDEX s_chunks_unique ON s_chunks (
+			hostkey,
+			prefix,
+			num,
+			add_num,
+			list
+		);
+	};
+	$self->{dbh}->do($index);
 }
 
 sub create_table_s_chunks {
@@ -250,6 +271,37 @@ sub create_table_mac_keys{
 }
 
 
+sub add_chunks_s {
+	my ($self, %args) 	= @_;
+	my $chunknum		= $args{chunknum}	|| 0;
+	my $chunks			= $args{chunks}		|| [];
+	my $list			= $args{'list'}		|| '';
+
+	my $add = $self->{dbh}->prepare('INSERT OR IGNORE INTO s_chunks (hostkey, prefix, num, add_num, list) VALUES (?, ?, ?, ?, ?)');
+
+	foreach my $chunk (@$chunks) {
+		$add->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $chunk->{add_chunknum}, $list );
+	}
+}
+
+sub add_chunks_a {
+	my ($self, %args) 	= @_;
+	my $chunknum		= $args{chunknum}	|| 0;
+	my $chunks			= $args{chunks}		|| [];
+	my $list			= $args{'list'}		|| '';
+
+	my $add = $self->{dbh}->prepare('INSERT OR IGNORE INTO a_chunks (hostkey, prefix, num, list) VALUES (?, ?, ?, ?)');
+
+	foreach my $chunk (@$chunks) {
+		$add->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $list );
+	}
+
+	if (scalar @$chunks == 0) { # keep empty chunks
+		$add->execute( '', '', $chunknum, $list );
+	}
+}
+
+
 =head1 CHANGELOG
 
 =over 4
@@ -273,6 +325,10 @@ Disable journalization. This speeds up updated by about 10x.
 =item 0.5
 
 Use base class L<Net::Google::SafeBrowsing2::DBI>.
+
+=item 0.6
+
+Use more efficient add_chunk_a and add_chunk_s functions.
 
 =back
 

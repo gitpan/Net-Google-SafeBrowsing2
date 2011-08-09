@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.2';
+our $VERSION = '0.3';
 
 
 =head1 NAME
@@ -162,8 +162,8 @@ sub create_table_a_chunks {
 
 	my $schema = qq{
 		CREATE TABLE a_chunks (
-			hostkey VARCHAR( 8 ),
-			prefix VARCHAR( 8 ),
+			hostkey VARBINARY( 8 ),
+			prefix VARBINARY( 8 ),
 			num INT NOT NULL,
 			list VARCHAR( 50 ) NOT NULL
 		);
@@ -185,6 +185,16 @@ sub create_table_a_chunks {
 		);
 	};
 	$self->{dbh}->do($index);
+
+	$index = qq{
+		CREATE UNIQUE INDEX a_chunks_unique ON a_chunks (
+			hostkey,
+			prefix,
+			num,
+			list
+		);
+	};
+	$self->{dbh}->do($index);
 }
 
 sub create_table_s_chunks {
@@ -192,8 +202,8 @@ sub create_table_s_chunks {
 
 	my $schema = qq{
 		CREATE TABLE s_chunks (
-			hostkey VARCHAR( 8 ),
-			prefix VARCHAR( 8 ),
+			hostkey VARBINARY( 8 ),
+			prefix VARBINARY( 8 ),
 			num INT NOT NULL,
 			add_num INT NOT NULL,
 			list VARCHAR( 50 ) NOT NULL
@@ -215,6 +225,17 @@ sub create_table_s_chunks {
 		);
 	};
 	$self->{dbh}->do($index);
+
+	$index = qq{
+		CREATE UNIQUE INDEX s_chunks_unique ON s_chunks (
+			hostkey,
+			prefix,
+			num,
+			add_num,
+			list
+		);
+	};
+	$self->{dbh}->do($index);
 }
 
 sub create_table_full_hashes {
@@ -224,7 +245,7 @@ sub create_table_full_hashes {
 		CREATE TABLE full_hashes (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			num INT,
-			hash VARCHAR( 32 ),
+			hash VARBINARY( 32 ),
 			list VARCHAR( 50 ),
 			timestamp INT Default '0'
 		);
@@ -249,7 +270,7 @@ sub create_table_full_hashes_errors {
 		CREATE TABLE full_hashes_errors (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			errors INT Default '0',
-			prefix VARCHAR( 8 ),
+			prefix VARBINARY( 8 ),
 			timestamp INT Default '0'
 		);
 	};
@@ -271,6 +292,46 @@ sub create_table_mac_keys{
 }
 
 
+sub add_chunks_s {
+	my ($self, %args) 	= @_;
+	my $chunknum		= $args{chunknum}	|| 0;
+	my $chunks			= $args{chunks}		|| [];
+	my $list			= $args{'list'}		|| '';
+
+	my $add = $self->{dbh}->prepare('INSERT IGNORE INTO s_chunks (hostkey, prefix, num, add_num, list) VALUES (?, ?, ?, ?, ?)');
+
+	foreach my $chunk (@$chunks) {
+		$add->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $chunk->{add_chunknum}, $list );
+	}
+}
+
+sub add_chunks_a {
+	my ($self, %args) 	= @_;
+	my $chunknum		= $args{chunknum}	|| 0;
+	my $chunks			= $args{chunks}		|| [];
+	my $list			= $args{'list'}		|| '';
+
+	my $add = $self->{dbh}->prepare('INSERT IGNORE INTO a_chunks (hostkey, prefix, num, list) VALUES (?, ?, ?, ?)');
+
+	foreach my $chunk (@$chunks) {
+		$add->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $list );
+	}
+
+	if (scalar @$chunks == 0) { # keep empty chunks
+		$add->execute( '', '', $chunknum, $list );
+	}
+}
+
+=head1 CHANGELOG
+
+=over 4
+
+=item 0.3
+
+Use more efficient add_chunk_a and add_chunk_s functions.
+Change data type for prefixes from VARCHAR to VARBINARY.
+
+=back
 
 =head1 SEE ALSO
 

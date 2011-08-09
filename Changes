@@ -16,3 +16,15 @@ Revision history for Perl extension Net::Google::SafeBrowsing2.
 
 0.6 Mon Jul 25 13:21:00 2011
 		- Handle local database reset
+
+0.7 Mon Jul 25 15:18:00 2011
+		- Add local_lookup to perform a lookup against the local database only for debugging purpose.
+		- Fix duplicate insert of add chunks and sub chunks.
+
+0.8 Tue Aug 02 13:05:00 2011
+		- Fix chunk retrieval with MySQL backend (VARCHAR to VARBINARY)
+		- Reduce the number of full hashes requested 
+
+0.9 Tue Aug 09 15:26:00 2011
+		- Fix bug with local whitelisting (sub chunks).
+		- Fix the parsing of full hashes.

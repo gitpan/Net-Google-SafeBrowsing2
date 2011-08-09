@@ -18,7 +18,7 @@ use MIME::Base64;
 use Exporter 'import';
 our @EXPORT = qw(DATABASE_RESET MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '0.6';
+our $VERSION = '0.9';
 
 
 =head1 NAME
@@ -566,6 +566,65 @@ sub lookup {
 }
 
 
+=head2 local_lookup()
+
+Lookup a URL against the local Google Safe Browsing database URL. This should be used for debugging purpose only. See the lookup function above.
+
+  my $match = $gsb->local_lookup(url => 'http://www.gumblar.cn');
+
+Returns the name of the list if there is any match, returns an empty string otherwise.
+
+Arguments
+
+=over 4
+
+=item list
+
+Optional. Lookup against a specific list. Use the list(s) from new() by default.
+
+=item url
+
+Required. URL to lookup.
+
+=back
+
+=cut
+sub local_lookup {
+	my ($self, %args) 	= @_;
+	my $list 			= $args{list}		|| '';
+	my $url 			= $args{url}		|| return '';
+
+	my @lists = @{$self->{list}};
+	@lists = @{[$args{list}]} if ($list ne '');
+
+
+	# TODO: create our own URI management for canonicalization
+	# fix for http:///foo.com (3 ///)
+	$url =~ s/^(https?:\/\/)\/+/$1/;
+
+
+
+	my $uri = URI->new($url)->canonical;
+
+	my $domain = $uri->host;
+	
+	my @hosts = $self->canonical_domain_suffixes($domain); # only top-3 in this case
+
+	foreach my $host (@hosts) {
+		$self->debug("Domain for key: $domain => $host\n");
+		my $suffix = $self->prefix("$host/"); # Don't forget trailing hash
+		$self->debug("Host key: " . $self->hex_to_ascii($suffix) . "\n");
+
+		my @matches = $self->local_lookup_suffix(lists => [@lists], url => $url, suffix => $suffix);
+# 		return $matches[0]->{list} if (scalar @matches > 0);
+		return $matches[0]->{list} . " " . $matches[0]->{chunknum}  if (scalar @matches > 0);
+	}
+
+	return '';
+
+}
+
+
 =head2 get_lists()
 
 Returns the name of all the Google Safe Browsing lists
@@ -608,8 +667,87 @@ sub lookup_suffix {
 	my $url 			= $args{url}		|| return '';
 	my $suffix			= $args{suffix}		|| return '';
 
+	# Calculcate prefixes
+	my @full_hashes = $self->full_hashes($url); # Get the prefixes from the first 4 bytes
+	my @full_hashes_prefix = map (substr($_, 0, 4), @full_hashes);
 
-# 	$self->debug("Lookup lists: " . join(" ", @$lists) . "\n");
+ 	# Local lookup
+	my @add_chunks = $self->local_lookup_suffix(lists => $lists, url => $url, suffix => $suffix, full_hashes_prefix => [@full_hashes_prefix]);
+	if (scalar @add_chunks == 0) {
+		$self->debug("No hit in local lookup\n");
+		return '';
+	}
+
+
+	# Check against full hashes
+	my $found = '';
+
+	# get stored full hashes
+	foreach my $add_chunk (@add_chunks) {
+		
+		my @hashes = $self->{storage}->get_full_hashes( chunknum => $add_chunk->{chunknum}, timestamp => time() - FULL_HASH_TIME, list => $add_chunk->{list});
+
+		$self->debug("Full hashes already stored for chunk " . $add_chunk->{chunknum} . ": " . scalar @hashes . "\n");
+		foreach my $full_hash (@full_hashes) {
+			foreach my $hash (@hashes) {
+				if ($hash eq $full_hash && defined first { $add_chunk->{list} eq $_ } @$lists) {
+					$self->debug("Full hash was found in storage\n");
+					$found = $add_chunk->{list};
+					last;
+				}
+# 				elsif ($hash ne $full_hash) {
+# 					$self->debug($self->hex_to_ascii($hash) . " ne " . $self->hex_to_ascii($full_hash) . "\n\n");
+# 				}
+			}
+			last if ($found ne '');
+		}
+		last if ($found ne '');
+	}
+
+	return $found if ($found ne '');
+
+
+	# ask for new hashes
+	# TODO: make sure we don't keep asking for the same over and over
+	my @hashes = $self->request_full_hash(prefixes => [ map($_->{prefix} || $_->{hostkey}, @add_chunks) ]);
+	$self->{storage}->add_full_hashes(full_hashes => [@hashes], timestamp => time());
+
+	foreach my $full_hash (@full_hashes) {
+		my $hash = first { $_->{hash} eq  $full_hash} @hashes;
+		next if (! defined $hash);
+
+		my $list = first { $hash->{list} eq $_ } @$lists;
+
+		if (defined $hash && defined $list) {
+# 			$self->debug($self->hex_to_ascii($hash->{hash}) . " eq " . $self->hex_to_ascii($full_hash) . "\n\n");
+
+			$self->debug("Match\n");
+
+			return $hash->{list};
+		}
+# 		elsif (defined $hash) {
+# 			$self->debug("hash: " . $self->hex_to_ascii($hash->{hash}) . "\n");
+# 			$self->debug("list: " . $hash->{list} . "\n");
+# 		}
+	}
+	
+	$self->debug("No match\n");
+	return '';
+}
+
+=head2 lookup_suffix()
+
+Lookup a host prefix in the local database only.
+
+=cut
+sub local_lookup_suffix {
+	my ($self, %args) 			= @_;
+	my $lists 					= $args{lists} 				|| croak "Missing lists\n";
+	my $url 					= $args{url}				|| return ();
+	my $suffix					= $args{suffix}				|| return ();
+	my $full_hashe_list 		= $args{full_hashes}		|| [];
+	my $full_hashes_prefix_list = $args{full_hashes_prefix} || [];
+
 
 	# Step 1: get all add chunks for this host key
 	# Do it for all lists
@@ -617,15 +755,20 @@ sub lookup_suffix {
 # 	return scalar @add_chunks;
 	if (scalar @add_chunks == 0) { # no match
 		$self->debug("No host key\n");
-		return ''; 
+		return @add_chunks;
 	}
 
 	# Step 2: calculcate prefixes
-# 	my @prefixes = $self->get_prefixes($url);
-	my @full_hashes = $self->full_hashes($url); # Get the prefixes from the first 4 bytes
-	my @full_hashes_prefix = map (substr($_, 0, 4), @full_hashes);
+	# Get the prefixes from the first 4 bytes
+	my @full_hashes_prefix = @{$full_hashes_prefix_list};
+	if (scalar @full_hashes_prefix == 0) {
+		my @full_hashes = @{$full_hashe_list};
+		@full_hashes = $self->full_hashes($url) if (scalar @full_hashes == 0);
 
-	# Step4: filter out add_chunks with prefix
+		@full_hashes_prefix = map (substr($_, 0, 4), @full_hashes);
+	}
+
+	# Step 3: filter out add_chunks with prefix
 	my $i = 0;
  	while ($i < scalar @add_chunks) {
 		if ($add_chunks[$i]->{prefix} ne '') {
@@ -654,7 +797,7 @@ sub lookup_suffix {
 	}
 	if (scalar @add_chunks == 0) {
 		$self->debug("No prefix match for any host key\n");
-		return ''; 
+		return @add_chunks;
 	}
 
 
@@ -665,23 +808,14 @@ sub lookup_suffix {
 		my $i = 0;
 		while ($i < scalar @add_chunks) {
 			my $add_chunk = $add_chunks[$i];
-			if ($add_chunk->{chunknum} == $sub_chunk->{addchunknum} && $sub_chunk->{prefix} eq '' && $add_chunk->{list} eq $sub_chunk->{list}) {
-				splice(@add_chunks, $i, 1);
+
+			if ($add_chunk->{chunknum} != $sub_chunk->{addchunknum} || $add_chunk->{list} ne $sub_chunk->{list}) {
+				$i++;
+				next;
 			}
-			elsif ($add_chunk->{chunknum} == $sub_chunk->{addchunknum} && $add_chunk->{list} eq $sub_chunk->{list}) { # need to check prefixes
-				my $found = 1;
-				foreach my $hash (@full_hashes) {
-					if ( $add_chunk->{prefix} eq substr($hash, 0, 4) ) {
-						$found = 1;
-						last;
-					}
-				}
-				if ($found == 0) {
-					splice(@add_chunks, $i, 1);
-				}
-				else {
-					$i++;
-				}
+
+			if ($sub_chunk->{prefix} eq $add_chunk->{prefix}) {
+				splice(@add_chunks, $i, 1);
 			}
 			else {
 				$i++;
@@ -691,65 +825,9 @@ sub lookup_suffix {
 
 	if (scalar @add_chunks == 0) {
 		$self->debug("All add_chunks have been removed by sub_chunks\n");
-		return ''; 
 	}
 
-
-	# step 5: check against full hashes
-	my $found = '';
-
-	# get stored full hashes
-	foreach my $add_chunk (@add_chunks) {
-		
-		my @hashes = $self->{storage}->get_full_hashes( chunknum => $add_chunk->{chunknum}, timestamp => time() - FULL_HASH_TIME, list => $add_chunk->{list});
-
-		$self->debug("Full hashes already stored for chunk " . $add_chunk->{chunknum} . ": " . scalar @hashes . "\n");
-		foreach my $full_hash (@full_hashes) {
-			foreach my $hash (@hashes) {
-				if ($hash eq $full_hash && defined first { $add_chunk->{list} eq $_ } @$lists) { # TODO: use first for List::Util instead
-					$self->debug("Full hash was found in storage\n");
-					$found = $add_chunk->{list};
-					last;
-				}
-# 				elsif ($hash ne $full_hash) {
-# 					$self->debug($self->hex_to_ascii($hash) . " ne " . $self->hex_to_ascii($full_hash) . "\n\n");
-# 				}
-			}
-			last if ($found ne '');
-		}
-		last if ($found ne '');
-	}
-
-	return $found if ($found ne '');
-
-
-	# ask for new hashes
-	# TODO: make sure we don't keep asking for the same over and over
-
-	my @hashes = $self->request_full_hash(prefixes => [@full_hashes_prefix]);
-	$self->{storage}->add_full_hashes(full_hashes => [@hashes], timestamp => time());
-
-	foreach my $full_hash (@full_hashes) {
-		my $hash = first { $_->{hash} eq  $full_hash} @hashes;
-		next if (! defined $hash);
-
-		my $list = first { $hash->{list} eq $_ } @$lists;
-
-		if (defined $hash && defined $list) {
-# 			$self->debug($self->hex_to_ascii($hash->{hash}) . " eq " . $self->hex_to_ascii($full_hash) . "\n\n");
-
-			$self->debug("Match\n");
-
-			return $hash->{list};
-		}
-# 		elsif (defined $hash) {
-# 			$self->debug("hash: " . $self->hex_to_ascii($hash->{hash}) . "\n");
-# 			$self->debug("list: " . $hash->{list} . "\n");
-# 		}
-	}
-	
-	$self->debug("No match\n");
-	return '';
+	return @add_chunks;
 }
 
 
@@ -1349,7 +1427,7 @@ Request full full hashes for specific prefixes from Google.
 
 sub request_full_hash {
 	my ($self, %args) 	= @_;
-	my $prefixes		= $args{prefixes}	|| return '';
+	my $prefixes		= $args{prefixes}	|| return ();
 	my $size			= $args{size}		|| length $prefixes->[0];
 
 # 	# Handle errors
@@ -1446,9 +1524,13 @@ sub parse_full_hashes {
 		$data =~ s/^(\d+)\n//;
 		my $length = $1;
 
-		my $hash = substr($data, 0, $length, '');
+		my $current = 0;
+		while ($current < $length) {
+			my $hash = substr($data, 0, 32, '');
+			push(@hashes, { hash => $hash, chunknum => $chunknum, list => $list });
 
-		push(@hashes, { hash => $hash, chunknum => $chunknum, list => $list });
+			$current += 32;
+		}
 	}
 
 	return @hashes;
@@ -1577,6 +1659,19 @@ Update documentation.
 =item 0.6
 
 Handle local database reset.
+
+=item 0.7
+
+Add local_lookup to perform a lookup against the local database only. This function should be used for debugging purpose only.
+Small code optimizations.
+
+=item 0.8
+
+Reduce the number of full hash requests.
+
+=item 0.9
+
+Fix bug with local whitelisting (sub chunks). Fix the parsing of full hashes.
 
 =back
 

@@ -7,7 +7,7 @@ use warnings;
 use Carp;
 
 
-our $VERSION = '0.2';
+our $VERSION = '0.3';
 
 =head1 NAME
 
@@ -145,11 +145,13 @@ Array of add chunks in the same format as described above:
     (
 		{ 
 			chunknum	=> 25121,
+			hostkey		=> hex('12345678'),
 			prefix		=> '',
 			list		=> 'goog-malware-shavar'
 		},
 		{ 
 			chunknum	=> '25121',
+			hostkey		=> hex('12345678'),
 			prefix		=> hex('2fc96b9f'),
 			list		=> 'goog-malware-shavar'
 		},
@@ -167,11 +169,13 @@ sub get_add_chunks {
 		{ 
 			chunknum	=> 25121,
 			prefix		=> '',
+			hostkey		=> $hostkey,
 			list		=> 'goog-malware-shavar'
 		},
 		{ 
 			chunknum	=> '25121',
 			prefix		=> $self->ascii_to_hex('2fc96b9f'),
+			hostkey		=> $hostkey,
 			list		=> 'goog-malware-shavar'
 		},
 	);
@@ -909,6 +913,10 @@ sub ascii_to_hex {
 =item 0.2
 
 Add functions to store and retrieve Message Authentication Code (MAC) keys.
+
+=item 0.3
+
+Return the hostley as part of the add chunks (get_add_chunks).
 
 =back
 

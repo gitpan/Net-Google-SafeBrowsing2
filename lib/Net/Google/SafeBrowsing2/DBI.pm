@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.3';
+our $VERSION = '0.5';
 
 
 =head1 NAME
@@ -139,6 +139,16 @@ sub create_table_a_chunks {
 		);
 	};
 	$self->{dbh}->do($index);
+
+	$index = qq{
+		CREATE UNIQUE INDEX a_chunks_unique ON a_chunks (
+			hostkey,
+			prefix,
+			num,
+			list
+		);
+	};
+	$self->{dbh}->do($index);
 }
 
 sub create_table_s_chunks {
@@ -166,6 +176,25 @@ sub create_table_s_chunks {
 	$index = qq{
 		CREATE INDEX s_chunks_num ON s_chunks (
 			num
+		);
+	};
+	$self->{dbh}->do($index);
+
+	$index = qq{
+		CREATE INDEX a_chunks_num_list ON a_chunks (
+			num,
+			list
+		);
+	};
+	$self->{dbh}->do($index);
+
+	$index = qq{
+		CREATE UNIQUE INDEX s_chunks_unique ON s_chunks (
+			hostkey,
+			prefix,
+			num,
+			add_num,
+			list
 		);
 	};
 	$self->{dbh}->do($index);
@@ -252,10 +281,12 @@ sub add_chunks_s {
 	my $chunks			= $args{chunks}		|| [];
 	my $list			= $args{'list'}		|| '';
 
-	my $sth = $self->{dbh}->prepare('INSERT INTO s_chunks (hostkey, prefix, num, add_num, list) VALUES (?, ?, ?, ?, ?)');
+	my $add = $self->{dbh}->prepare('INSERT INTO s_chunks (hostkey, prefix, num, add_num, list) VALUES (?, ?, ?, ?, ?)');
+	my $del = $self->{dbh}->prepare('DELETE FROM s_chunks WHERE hostkey = ? AND prefix = ? AND num = ? AND add_num = ? AND list = ?');
 
 	foreach my $chunk (@$chunks) {
-		$sth->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $chunk->{add_chunknum}, $list );
+		$del->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $chunk->{add_chunknum}, $list );
+		$add->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $chunk->{add_chunknum}, $list );
 	}
 }
 
@@ -265,14 +296,17 @@ sub add_chunks_a {
 	my $chunks			= $args{chunks}		|| [];
 	my $list			= $args{'list'}		|| '';
 
-	my $sth = $self->{dbh}->prepare('INSERT INTO a_chunks (hostkey, prefix, num, list) VALUES (?, ?, ?, ?)');
+	my $add = $self->{dbh}->prepare('INSERT INTO a_chunks (hostkey, prefix, num, list) VALUES (?, ?, ?, ?)');
+	my $del = $self->{dbh}->prepare('DELETE FROM a_chunks WHERE hostkey = ? AND  prefix  = ? AND num = ? AND  list  = ?');
 
 	foreach my $chunk (@$chunks) {
-		$sth->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $list );
+		$del->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $list );
+		$add->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $list );
 	}
 
 	if (scalar @$chunks == 0) { # keep empty chunks
-		$sth->execute( '', '', $chunknum, $list );
+		$del->execute( '', '', $chunknum, $list );
+		$add->execute( '', '', $chunknum, $list );
 	}
 }
 
@@ -287,7 +321,7 @@ sub get_add_chunks {
 	my $rows = $self->{dbh}->selectall_arrayref("SELECT * FROM a_chunks WHERE hostkey = ?", { Slice => {} }, $hostkey);
 
 	foreach my $row (@$rows) {
-		push(@list, { chunknum => $row->{num}, prefix => $row->{prefix}, list => $row->{list} });
+		push(@list, { chunknum => $row->{num}, prefix => $row->{prefix}, list => $row->{list}, hostkey => $hostkey });
 	}
 
 	return @list;
@@ -550,11 +584,19 @@ sub reset {
 
 =item 0.2
 
-Replace "INSERT ORE REPLACE" statements by DELETE + INSERT to work with all databases
+Replace "INSERT OR REPLACE" statements by DELETE + INSERT to work with all databases
 
 =item 0.3
 
 Add reset function to reset all tables for a given list
+
+=item 0.4
+
+Fix duplicate insert of add chunks and sub chunks.
+
+=item 0.5
+
+Return the hostkey in get_add_chunks.
 
 =back
 
