@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.3';
+our $VERSION = '0.4';
 
 
 =head1 NAME
@@ -71,6 +71,10 @@ Required. MySQL password.
 
 Optional. MySQL port number to connect to.
 
+=item keep_all
+
+Optional. Set to 1 to keep old information (such as expiring full hashes) in the database. 0 (delete) by default.
+
 =back
 
 
@@ -85,6 +89,7 @@ sub new {
 		host		=> '127.0.0.1',
 		database	=> 'GoogleSafeBrowsingv2',
 		port		=> 3306,
+		keep_all	=> 0,
 
 		%args,
 	};
@@ -330,6 +335,10 @@ sub add_chunks_a {
 
 Use more efficient add_chunk_a and add_chunk_s functions.
 Change data type for prefixes from VARCHAR to VARBINARY.
+
+=item 0.4
+
+Add option keep_all to keep expired full hashes. Useful for debugging.
 
 =back
 

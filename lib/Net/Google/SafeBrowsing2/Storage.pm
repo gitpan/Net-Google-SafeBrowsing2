@@ -7,7 +7,7 @@ use warnings;
 use Carp;
 
 
-our $VERSION = '0.3';
+our $VERSION = '0.4';
 
 =head1 NAME
 
@@ -62,7 +62,7 @@ sub new {
 
 Add chunk information to the local database
 
-  $storage->add_chunks(type => 'a', chunkum => 2154, chunks => [{host => HEX, prefix => ''}], list => 'goog-malware-shavar');
+  $storage->add_chunks(type => 'a', chunknum => 2154, chunks => [{host => HEX, prefix => ''}], list => 'goog-malware-shavar');
 
 Does not return anything.
 
@@ -924,7 +924,7 @@ Return the hostley as part of the add chunks (get_add_chunks).
 
 See L<Net::Google::SafeBrowsing2> for handling Google Safe Browsing v2.
 
-See L<Net::Google::SafeBrowsing2::Sqlite> for an example of storing and managing the Google Safe Browsing database.
+See L<Net::Google::SafeBrowsing2::Sqlite> or L<Net::Google::SafeBrowsing2::MySQL> for an example of storing and managing the Google Safe Browsing database.
 
 Google Safe Browsing v2 API: L<http://code.google.com/apis/safebrowsing/developers_guide_v2.html>
 

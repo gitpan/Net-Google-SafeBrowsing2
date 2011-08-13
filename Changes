@@ -28,3 +28,8 @@ Revision history for Perl extension Net::Google::SafeBrowsing2.
 0.9 Tue Aug 09 15:26:00 2011
 		- Fix bug with local whitelisting (sub chunks).
 		- Fix the parsing of full hashes.
+
+1.0 Wed Aug 10 15:11:00
+		- Storage: add keep_all argument to keep expired full hashes in the database
+		- Separate the error output from debug output
+		- A lot of testing

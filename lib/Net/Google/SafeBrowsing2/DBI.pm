@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.5';
+our $VERSION = '0.6';
 
 
 =head1 NAME
@@ -40,6 +40,16 @@ This is a base implementation of L<Net::Google::SafeBrowsing2::Storage> using DB
 
 This method should be overwritten.
 
+Arguments
+
+=over 4
+
+=item keep_all
+
+Optional. Set to 1 to keep old information (such as expiring full hashes) in the database. 0 (delete) by default.
+
+=back
+
 
 =back
 
@@ -49,7 +59,7 @@ sub new {
 	my ($class, %args) = @_;
 
 	my $self = { # default arguments
-
+		keep_all	=> 0,
 		%args,
 	};
 
@@ -79,7 +89,10 @@ Cleanup old full hashes, and close the connection to the database.
 sub close {
 	my ($self, %args) = @_;
 
-	$self->{dbh}->do('DELETE FROM full_hashes WHERE timestamp < ?', { }, time() - Net::Google::SafeBrowsing2::FULL_HASH_TIME);
+
+	if ($self->{keep_all} == 0) {
+		$self->{dbh}->do('DELETE FROM full_hashes WHERE timestamp < ?', { }, time() - Net::Google::SafeBrowsing2::FULL_HASH_TIME);
+	}
 
 	$self->{dbh}->disconnect;
 }
@@ -597,6 +610,10 @@ Fix duplicate insert of add chunks and sub chunks.
 =item 0.5
 
 Return the hostkey in get_add_chunks.
+
+=item 0.6
+
+Add option keep_all to keep expired full hashes. Useful for debugging.
 
 =back
 

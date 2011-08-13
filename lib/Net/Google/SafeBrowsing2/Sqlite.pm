@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.6';
+our $VERSION = '0.7';
 
 
 =head1 NAME
@@ -50,6 +50,10 @@ Arguments
 
 Required. File to store the database.
 
+=item keep_all
+
+Optional. Set to 1 to keep old information (such as expiring full hashes) in the database. 0 (delete) by default.
+
 =back
 
 
@@ -61,6 +65,7 @@ sub new {
 	my ($class, %args) = @_;
 
 	my $self = { # default arguments
+		keep_all	=> 0,
 		file		=> 'gsb2.db',
 
 		%args,
@@ -329,6 +334,10 @@ Use base class L<Net::Google::SafeBrowsing2::DBI>.
 =item 0.6
 
 Use more efficient add_chunk_a and add_chunk_s functions.
+
+=item 0.7
+
+Add option keep_all to keep expired full hashes. Useful for debugging.
 
 =back
 

@@ -18,7 +18,7 @@ use MIME::Base64;
 use Exporter 'import';
 our @EXPORT = qw(DATABASE_RESET MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '0.9';
+our $VERSION = '1.0';
 
 
 =head1 NAME
@@ -163,6 +163,10 @@ Optional. Set to 1 to enable debugging. 0 (disabled by default).
 
 The debug output maybe quite large and can slow down significantly the update and lookup functions.
 
+=item errors
+
+Optional. Set to 1 to show errors to STDOUT. 0 (disabled by default).
+
 =item version
 
 Optional. Google Safe Browsing version. 2.2 by default
@@ -181,6 +185,8 @@ sub new {
 		key			=> '',
 		version		=> '2.2',
 		debug		=> 0,
+		errors		=> 0,
+		last_error	=> '',
 		mac			=> 0,
 
 		%args,
@@ -320,7 +326,7 @@ sub update {
 	$self->debug($res->as_string . "\n");
 
 	if (! $res->is_success) {
-		$self->debug("Request failed\n");
+		$self->error("Request failed\n");
 
 		foreach my $list (@lists) {
 			$self->update_error('time' => time(), list => $list);
@@ -382,7 +388,7 @@ sub update {
 			$data =~ s/^m:(\S+)\n//g;
 
 			if (! $self->validate_data_mac(data => $data, key => $client_key, digest => $hmac) ) {
-				$self->debug("MAC error on main request\n");
+				$self->error("MAC error on main request\n");
 
 				return MAC_ERROR;
 			}
@@ -394,7 +400,7 @@ sub update {
 			return $self->update(list => $list, force => $force, mac => $mac);
 		}
 		elsif ($line =~ /r:pleasereset/) {
-			$self->debug("Databse must be reset\n");
+			$self->debug("Database must be reset\n");
 
 			$self->{storage}->reset(list => $list);
 
@@ -414,7 +420,7 @@ sub update {
 		$self->debug("Checking redirection http://$redirection ($list)\n");
 		$res = $ua->get("http://$redirection");
 		if (! $res->is_success) {
-			$self->debug("Request to $redirection failed\n");
+			$self->error("Request to $redirection failed\n");
 
 			foreach my $list (@lists) {
 				$self->update_error('time' => $last_update, list => $list);
@@ -428,7 +434,7 @@ sub update {
 	
 		my $data = $res->content;
 		if ($mac && ! $self->validate_data_mac(data => $data, key => $client_key, digest => $hmac) ) {
-			$self->debug("MAC error on redirection\n");
+			$self->error("MAC error on redirection\n");
 			$self->debug("Length of data: " . length($data) . "\n");
 
 			return MAC_ERROR;
@@ -469,7 +475,7 @@ sub update {
 					$self->{storage}->add_chunks(type => 'a', chunknum => $chunk_num, chunks => [@chunks], list => $list); # Must happen all at once => not 100% sure
 				}
 				else {
-					$self->debug("ERROR - incorrect chunk type: $type, should be a: or s:\n");
+					$self->error("Incorrect chunk type: $type, should be a: or s:\n");
 
 					foreach my $list (@lists) {
 						$self->update_error('time' => $last_update, list => $list);
@@ -487,7 +493,7 @@ sub update {
 # 				return $self->update(list => $list, force => $force, mac => $mac);
 # 			}
 			else {
-				$self->debug("ERROR - could not parse header\n");
+				$self->error("could not parse header\n");
 
 				foreach my $list (@lists) {
 					$self->update_error('time' => $last_update, list => $list);
@@ -644,6 +650,30 @@ sub get_lists {
 
 	return split/\s/, $res->decoded_content; # 1 list per line
 }
+
+
+=head2 last_error()
+
+Get/Set the last error message.
+
+  print "Last error: ", $gsb->last_error(), "\n";
+  $gsb->last_error(''); # Reset last error
+
+NOTE: the last error message might not come from the last call. Returns an empty string if no errors.
+
+=cut
+
+sub last_error {
+	my ($self, $message) = @_;
+
+	if (defined $message) {
+		$self->{last_error} = $message;
+	}
+	else {
+		return $self->{last_error};
+	}
+}
+
 
 =pod
 
@@ -872,7 +902,7 @@ sub request_mac_keys {
 	my $res = $self->ua->get($url);
 
 	if (! $res->is_success) {
-		$self->debug("Key request failed: " . $res->code . "\n");
+		$self->error("Key request failed: " . $res->code . "\n");
 		return ($client_key, $wrapped_key);
 	}
 
@@ -1155,6 +1185,20 @@ sub debug {
 	my ($self, $message) = @_;
 
 	print $message if ($self->{debug} > 0);
+}
+
+
+=head2 error()
+
+Print error message.
+
+=cut
+
+sub error {
+	my ($self, $message) = @_;
+
+	print "ERROR - ", $message if ($self->{debug} > 0 || $self->{errors} > 0);
+	$self->{last_error} = $message;
 }
 
 =head2 canonical_domain_suffixes()
@@ -1469,7 +1513,7 @@ sub request_full_hash {
 	my $res = $self->ua->post($url, Content =>  "$header\n$prefix_list");
 
 	if (! $res->is_success) {
-		$self->debug("Full hash request failed\n");
+		$self->error("Full hash request failed\n");
 		$self->debug($res->as_string . "\n");
 
 		foreach my $prefix (@$prefixes) {
@@ -1512,7 +1556,7 @@ sub parse_full_hashes {
 	# goog-malware-shavar:22428:32\nHEX
 	while (length $data > 0) {
 		if ($data !~ /^[a-z-]+:\d+:\d+\n/) {
-			$self->debug("ERROR: list not found\n");
+			$self->error("list not found\n");
 			return ();
 		}
 		$data =~ s/^([a-z-]+)://;
@@ -1672,6 +1716,10 @@ Reduce the number of full hash requests.
 =item 0.9
 
 Fix bug with local whitelisting (sub chunks). Fix the parsing of full hashes.
+
+=item 1.0
+
+Separate the error output from the debug output.
 
 =back
 
