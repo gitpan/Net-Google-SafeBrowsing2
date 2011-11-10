@@ -33,3 +33,9 @@ Revision history for Perl extension Net::Google::SafeBrowsing2.
 		- Storage: add keep_all argument to keep expired full hashes in the database
 		- Separate the error output from debug output
 		- A lot of testing
+
+1.01 Wed Aug 26 13:49:00
+		- Use String::HexConvert for faster hex_to_ascii
+
+1.02 Thu Nov 10 10:00:00
+		- Fix uninitialized $self->{errors} variable

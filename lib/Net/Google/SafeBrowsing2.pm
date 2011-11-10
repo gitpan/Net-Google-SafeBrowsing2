@@ -13,12 +13,14 @@ use Text::Trim;
 use Digest::HMAC_SHA1 qw(hmac_sha1 hmac_sha1_hex);
 use MIME::Base64::URLSafe;
 use MIME::Base64;
+use String::HexConvert;
+
 
 
 use Exporter 'import';
 our @EXPORT = qw(DATABASE_RESET MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '1.0';
+our $VERSION = '1.02';
 
 
 =head1 NAME
@@ -970,7 +972,8 @@ sub update_error {
 	my $list			= $args{'list'}	|| '';
 
 	my $info = $self->{storage}->last_update(list => $list);
-	my $errors = $info->{'errors'} + 1;
+	$info->{errors} = 0 if (! exists $info->{errors});
+	my $errors = $info->{errors} + 1;
 	my $wait = 0;
 
 	$wait = $errors == 1 ? 60
@@ -1148,13 +1151,14 @@ Transform hexadecimal strings to printable ASCII strings. Used mainly for debugg
 sub hex_to_ascii {
 	my ($self, $hex) = @_;
 
-	my $ascii = '';
-
-	while (length $hex > 0) {
-		$ascii .= sprintf("%02x",  ord( substr($hex, 0, 1, '') ) );
-	}
-
-	return $ascii;
+	return String::HexConvert::ascii_to_hex($hex);
+# 	my $ascii = '';
+# 
+# 	while (length $hex > 0) {
+# 		$ascii .= sprintf("%02x",  ord( substr($hex, 0, 1, '') ) );
+# 	}
+# 
+# 	return $ascii;
 }
 
 
@@ -1720,6 +1724,10 @@ Fix bug with local whitelisting (sub chunks). Fix the parsing of full hashes.
 =item 1.0
 
 Separate the error output from the debug output.
+
+=item 1.01
+
+Use String::HexConvert for faster hex_to_ascii.
 
 =back
 

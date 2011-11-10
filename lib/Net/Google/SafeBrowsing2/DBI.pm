@@ -484,7 +484,7 @@ sub add_full_hashes {
 sub delete_full_hashes {
 	my ($self, %args) 	= @_;
 	my $chunknums		= $args{chunknums}	|| [];
-	my $list			= $args{list}			|| croak "Missing list name\n";
+	my $list			= $args{list}		|| croak "Missing list name\n";
 
 	my $sth = $self->{dbh}->prepare("DELETE FROM full_hashes WHERE num = ? AND list = ?");
 
