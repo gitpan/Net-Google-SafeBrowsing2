@@ -30,4 +30,4 @@ requires:
   Text::Trim: 0
   URI: 0
   constant: 0
-version: 1.02
+version: 1.03

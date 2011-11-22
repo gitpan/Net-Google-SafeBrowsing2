@@ -20,7 +20,7 @@ use String::HexConvert;
 use Exporter 'import';
 our @EXPORT = qw(DATABASE_RESET MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 
 =head1 NAME
@@ -49,13 +49,15 @@ Net::Google::SafeBrowsing2 - Perl extension for the Google Safe Browsing v2 API.
 
 =head1 DESCRIPTION
 
-Net::Google::SafeBrowsing2 implements (most of) the Google Safe Browsing v2 API.
+Net::Google::SafeBrowsing2 implements the Google Safe Browsing v2 API.
 
 The library passes most of the unit tests listed in the API documentation. See the documentation (L<http://code.google.com/apis/safebrowsing/developers_guide_v2.html>) for more details about the failed tests.
 
 The Google Safe Browsing database must be stored and managed locally. L<Net::Google::SafeBrowsing2::Sqlite> uses Sqlite as the storage back-end, L<Net::Google::SafeBrowsing2::MySQL> uses MySQL. Other storage mechanisms (databases, memory, etc.) can be added and used transparently with this module.
 
 You may want to look at "Google Safe Browsing v2: Implementation Notes" (L<http://www.zscaler.com/research/Google%20Safe%20Browsing%20v2%20API.pdf>), a collection of notes and real-world numbers about the API. This is intended for people who want to learn more about the API, whether as a user or to make their own implementation.
+
+The source code is available on github at L<https://github.com/juliensobrier/Net-Google-SafeBrowsing2>.
 
 =head1 CONSTANTS
 
@@ -1729,6 +1731,14 @@ Separate the error output from the debug output.
 
 Use String::HexConvert for faster hex_to_ascii.
 
+=item 1.02
+
+Fix uninitialized $self->{errors} variable
+
+=item 1.03
+
+The source code is available on github at L<https://github.com/juliensobrier/Net-Google-SafeBrowsing2>.
+
 =back
 
 =head1 SEE ALSO
@@ -1738,6 +1748,7 @@ See L<Net::Google::SafeBrowsing> for the implementation of Google Safe Browsing 
 See L<Net::Google::SafeBrowsing2::Storage> and L<Net::Google::SafeBrowsing2::Sqlite> for information on storing and managing the Google Safe Browsing database.
 
 Google Safe Browsing v2 API: L<http://code.google.com/apis/safebrowsing/developers_guide_v2.html>
+git status
 
 =head1 AUTHOR
 
@@ -1745,7 +1756,7 @@ Julien Sobrier, E<lt>jsobrier@zscaler.comE<gt> or E<lt>julien@sobrier.netE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2010 by Julien Sobrier
+Copyright (C) 2011 by Julien Sobrier
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.8 or,
