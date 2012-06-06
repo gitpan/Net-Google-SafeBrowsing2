@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.4';
+our $VERSION = '0.5';
 
 
 =head1 NAME
@@ -210,7 +210,7 @@ sub create_table_s_chunks {
 			hostkey VARBINARY( 8 ),
 			prefix VARBINARY( 8 ),
 			num INT NOT NULL,
-			add_num INT NOT NULL,
+			add_num INT DEFAULT 0,
 			list VARCHAR( 50 ) NOT NULL
 		);
 	};
@@ -227,6 +227,14 @@ sub create_table_s_chunks {
 	$index = qq{
 		CREATE INDEX s_chunks_num ON s_chunks (
 			num
+		);
+	};
+	$self->{dbh}->do($index);
+
+	$index = qq{
+		CREATE INDEX s_chunks_num_list ON s_chunks (
+			num,
+			list
 		);
 	};
 	$self->{dbh}->do($index);
@@ -308,6 +316,10 @@ sub add_chunks_s {
 	foreach my $chunk (@$chunks) {
 		$add->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $chunk->{add_chunknum}, $list );
 	}
+
+	if (scalar @$chunks == 0) { # keep empty chunks
+		$add->execute( '', '',  $chunknum, '', $list );
+	}
 }
 
 sub add_chunks_a {
@@ -319,6 +331,12 @@ sub add_chunks_a {
 	my $add = $self->{dbh}->prepare('INSERT IGNORE INTO a_chunks (hostkey, prefix, num, list) VALUES (?, ?, ?, ?)');
 
 	foreach my $chunk (@$chunks) {
+		# 32-byte prefix seen at chunk 69961
+		# If this becomes more of a problem, the schema will have to be adjusted.
+		if (length($chunk->{prefix}) > 8) {
+			$chunk->{prefix} = substr $chunk->{prefix}, 0, 4;
+		}
+
 		$add->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $list );
 	}
 
@@ -331,14 +349,19 @@ sub add_chunks_a {
 
 =over 4
 
+=item 0.5
+
+Keep empty sub chunks. Shorten prefixes greater than 8 bytes (workaround tro keep schema tight)
+
+=item 0.4
+
+Add option keep_all to keep expired full hashes. Useful for debugging.
+
 =item 0.3
 
 Use more efficient add_chunk_a and add_chunk_s functions.
 Change data type for prefixes from VARCHAR to VARBINARY.
 
-=item 0.4
-
-Add option keep_all to keep expired full hashes. Useful for debugging.
 
 =back
 

@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.6';
+our $VERSION = '0.7';
 
 
 =head1 NAME
@@ -97,6 +97,7 @@ sub close {
 	$self->{dbh}->disconnect;
 }
 
+
 =back
 
 =cut
@@ -172,7 +173,7 @@ sub create_table_s_chunks {
 			hostkey VARCHAR( 8 ),
 			prefix VARCHAR( 8 ),
 			num INT NOT NULL,
-			add_num INT NOT NULL,
+			add_num INT  Default '0',
 			list VARCHAR( 50 ) NOT NULL
 		);
 	};
@@ -194,7 +195,7 @@ sub create_table_s_chunks {
 	$self->{dbh}->do($index);
 
 	$index = qq{
-		CREATE INDEX a_chunks_num_list ON a_chunks (
+		CREATE INDEX s_chunks_num_list ON s_chunks (
 			num,
 			list
 		);
@@ -300,6 +301,11 @@ sub add_chunks_s {
 	foreach my $chunk (@$chunks) {
 		$del->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $chunk->{add_chunknum}, $list );
 		$add->execute( $chunk->{host}, $chunk->{prefix}, $chunknum, $chunk->{add_chunknum}, $list );
+	}
+
+	if (scalar @$chunks == 0) { # keep empty chunks
+		$del->execute( '', '', '', $chunknum, $list );
+		$add->execute( '', '', '', $chunknum, $list );
 	}
 }
 
@@ -518,7 +524,7 @@ sub full_hash_ok {
 
 	if (scalar @$rows > 0) {
 		$self->{dbh}->do("UPDATE full_hashes_errors SET errors = 0, timestamp = ? WHERE id = ?", $timestamp, $rows->[0]->{id});
-		$self->{dbh}->do("DELETE FROM full_hashes_errors WHERE id = ?", $timestamp, $rows->[0]->{id});
+		$self->{dbh}->do("DELETE FROM full_hashes_errors WHERE id = ?", $rows->[0]->{id});
 	}
 }
 
@@ -570,8 +576,6 @@ sub delete_mac_keys {
 
 sub reset {
 	my ($self, %args) 	= @_;
-	my $chunknum		= $args{chunknum}	|| 0;
-	my $chunks			= $args{chunks}		|| [];
 	my $list			= $args{'list'}		|| '';
 
 	my $sth = $self->{dbh}->prepare('DELETE FROM s_chunks WHERE list = ?');
@@ -583,37 +587,71 @@ sub reset {
 	$sth = $self->{dbh}->prepare('DELETE FROM full_hashes WHERE list = ?');
 	$sth->execute( $list );
 
-	$sth = $self->{dbh}->prepare('DELETE FROM full_hashes_errors WHERE list = ?');
-	$sth->execute( $list );
+	$sth = $self->{dbh}->prepare('DELETE FROM full_hashes_errors');
+	$sth->execute();
 
 	$sth = $self->{dbh}->prepare('DELETE FROM updates WHERE list = ?');
 	$sth->execute( $list );
 }
 
+sub create_range {
+	my ($self, %args) 	= @_;
+	my $numbers			= $args{numbers}	|| []; # should already be ordered
+
+	return '' if (scalar @$numbers == 0);
+
+	my $range = $$numbers[0];
+	my $new_range = 0;
+	for(my $i = 1; $i < scalar @$numbers; $i++) {
+# 		next if ($$numbers[$i] == $$numbers[$i-1]); # should not happen
+
+		if ($$numbers[$i] != $$numbers[$i-1] + 1) {
+			$range .= $$numbers[$i-1] if ($i > 1 && $new_range == 1);
+			$range .= ',' . $$numbers[$i];
+
+			$new_range = 0
+		}
+		elsif ($new_range == 0) {
+			$range .= "-";
+			$new_range = 1;
+		}
+	}
+	$range .= $$numbers[scalar @$numbers - 1] if ($new_range == 1);
+
+	return $range;
+}
 
 =head1 CHANGELOG
 
 =over 4
 
-=item 0.2
+=item 0.7
 
-Replace "INSERT OR REPLACE" statements by DELETE + INSERT to work with all databases
+New C<export()> function.
 
-=item 0.3
+Keep empty sub chunks.
 
-Add reset function to reset all tables for a given list
+Fix index for sub chunks.
 
-=item 0.4
+=item 0.6
 
-Fix duplicate insert of add chunks and sub chunks.
+Add option keep_all to keep expired full hashes. Useful for debugging.
 
 =item 0.5
 
 Return the hostkey in get_add_chunks.
 
-=item 0.6
+=item 0.4
 
-Add option keep_all to keep expired full hashes. Useful for debugging.
+Fix duplicate insert of add chunks and sub chunks.
+
+=item 0.3
+
+Add reset function to reset all tables for a given list
+
+=item 0.2
+
+Replace "INSERT OR REPLACE" statements by DELETE + INSERT to work with all databases
 
 =back
 
