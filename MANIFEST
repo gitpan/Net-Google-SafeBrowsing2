@@ -10,4 +10,5 @@ lib/Net/Google/SafeBrowsing2/MySQL.pm
 lib/Net/Google/SafeBrowsing2/Postgres.pm
 lib/Net/Google/SafeBrowsing2/DBI.pm
 lib/Net/Google/SafeBrowsing2/Lookup.pm
-META.yml                                 Module meta-data (added by MakeMaker)
+META.yml                                 Module YAML meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)
