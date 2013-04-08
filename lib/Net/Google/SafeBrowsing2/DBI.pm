@@ -10,7 +10,7 @@ use DBI;
 use List::Util qw(first);
 
 
-our $VERSION = '0.7';
+our $VERSION = '1.0';
 
 
 =head1 NAME
@@ -18,6 +18,9 @@ our $VERSION = '0.7';
 Net::Google::SafeBrowsing2::DBI - Base class for all DBI-based back-end storage for the Google Safe Browsing v2 database
 
 =head1 SYNOPSIS
+
+Net::Google::SafeBrowsing2::DBI cannot be used directly. Instead, use a class inheriting Net::Google::SafeBrowsing2::DBI, like L<Net::Google::SafeBrowsing2::MySQL>.
+
 
   use Net::Google::SafeBrowsing2::MySQL;
 
@@ -36,6 +39,8 @@ This is a base implementation of L<Net::Google::SafeBrowsing2::Storage> using DB
 
 =over 4
 
+=back
+
 =head2 new()
 
 This method should be overwritten.
@@ -47,8 +52,6 @@ Arguments
 =item keep_all
 
 Optional. Set to 1 to keep old information (such as expiring full hashes) in the database. 0 (delete) by default.
-
-=back
 
 
 =back
@@ -76,6 +79,8 @@ sub new {
 =over 4
 
 See L<Net::Google::SafeBrowsing2::Storage> for a complete list of public functions.
+
+=back
 
 =head2 close()
 
@@ -239,10 +244,6 @@ sub export {
 
 	CORE::close(EXPORT);
 }
-
-=back
-
-=cut
 
 sub init {
 	my ($self, %args) = @_;
@@ -446,8 +447,8 @@ sub add_chunks_s {
 	}
 
 	if (scalar @$chunks == 0) { # keep empty chunks
-		$del->execute( '', '', '', $chunknum, $list );
-		$add->execute( '', '', '', $chunknum, $list );
+		$del->execute( '', '', $chunknum, '', $list );
+		$add->execute( '', '', $chunknum, '', $list );
 	}
 }
 
@@ -766,6 +767,10 @@ sub create_range {
 =head1 CHANGELOG
 
 =over 4
+
+=item 0.7.1
+
+Fix for empty sub chunks.
 
 =item 0.7
 

@@ -31,4 +31,4 @@ requires:
   Text::Trim: 0
   URI: 0
   constant: 0
-version: 1.07
+version: 1.08
