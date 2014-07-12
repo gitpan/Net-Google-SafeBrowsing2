@@ -21,14 +21,14 @@ requires:
   Digest::HMAC_SHA1: 0
   Digest::SHA: 0
   File::Slurp: 0
+  IO::Socket::SSL: 0
   LWP::UserAgent: 0
   List::Util: 0
   MIME::Base64: 0
   MIME::Base64::URLSafe: 0
-  Net::IPAddress: 0
   String::HexConvert: 0
   Test::More: 0
   Text::Trim: 0
   URI: 0
   constant: 0
-version: 1.10
+version: 1.11

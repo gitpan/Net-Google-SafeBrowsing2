@@ -8,7 +8,6 @@ use LWP::UserAgent;
 use URI;
 use Digest::SHA qw(sha256);
 use List::Util qw(first);
-use Net::IPAddress;
 use Text::Trim;
 use Digest::HMAC_SHA1 qw(hmac_sha1 hmac_sha1_hex);
 use MIME::Base64::URLSafe;
@@ -21,7 +20,7 @@ use IO::Socket::SSL 'inet4' ;
 use Exporter 'import';
 our @EXPORT = qw(DATABASE_RESET MAC_ERROR MAC_KEY_ERROR INTERNAL_ERROR SERVER_ERROR NO_UPDATE NO_DATA SUCCESSFUL MALWARE PHISHING);
 
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 BEGIN {
     IO::Socket::SSL::set_ctx_defaults(
@@ -158,6 +157,14 @@ Arguments
 
 =over 4
 
+=item server
+
+Safe Browsing Server. https://safebrowsing.clients.google.com/safebrowsing/ by default
+
+=item mac_server
+
+Safe Browsing MAC Server. https://sb-ssl.google.com/safebrowsing/ by default
+
 =item key
 
 Required. Your Google Safe browsing API key
@@ -200,13 +207,15 @@ sub new {
 	my ($class, %args) = @_;
 
 	my $self = { # default arguments
+		server		=> 'https://safebrowsing.clients.google.com/safebrowsing/',
+		mac_server	=> 'https://sb-ssl.google.com/safebrowsing/',
 		list		=> ['googpub-phish-shavar', 'goog-malware-shavar'],
-		key			=> '',
+		key		=> '',
 		version		=> '2.2',
 		debug		=> 0,
 		errors		=> 0,
 		last_error	=> '',
-		mac			=> 0,
+		mac		=> 0,
 		perf		=> 0,
 
 		%args,
@@ -268,10 +277,10 @@ Be careful if you set this option to 1 as too frequent updates might result in t
 
 sub update {
 	my ($self, %args) 	= @_;
-# 	my @lists 			= @{[$args{list}]}	|| @{$self->{list}} || croak "Missing list name\n";
-	my $list			= $args{list};
-	my $force 			= $args{force}	|| 0;
-	my $mac				= $args{mac}	|| $self->{mac}	|| 0;
+# 	my @lists 		= @{[$args{list}]}	|| @{$self->{list}} || croak "Missing list name\n";
+	my $list		= $args{list};
+	my $force 		= $args{force}	|| 0;
+	my $mac			= $args{mac}	|| $self->{mac}	|| 0;
 
 
 	my @lists = @{$self->{list}};
@@ -318,7 +327,7 @@ sub update {
 
 	my $ua = $self->ua;
 
-	my $url = "https://safebrowsing.clients.google.com/safebrowsing/downloads?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
+	my $url = $self->{server} . "downloads?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
 	$url .= "&wrkey=$wrapped_key" if ($mac);
 
 	my $body = '';
@@ -607,7 +616,7 @@ NOTE: this function is useless in practice because Google includes some lists wh
 sub get_lists {
 	my ($self, %args) = @_;
 
-	my $url = "https://safebrowsing.clients.google.com/safebrowsing/list?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
+	my $url = $self->{server} . "list?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
 
 	my $res = $self->ua->get($url);
 
@@ -917,7 +926,7 @@ sub request_mac_keys {
 	my $client_key = '';
 	my $wrapped_key = '';
 
-	my $url = "https://sb-ssl.google.com/safebrowsing/newkey?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
+	my $url = $self->{mac_server} . "newkey?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
 
 	my $res = $self->ua->get($url);
 
@@ -1457,16 +1466,14 @@ sub canonical_uri {
 	$escape =~ s/^([a-z]+:\/\/[^\/]+)(\?.*)$/$1\/$2/gi;
 # 	$self->debug("\t$escape\n");
 
-	# other weird case if domain = digits only, try to translte it to IP address
+	# other weird case if domain = digits only, try to translate it to IP address
 	if ((my $domain = URI->new($escape)->host) =~/^\d+$/) {
-		my $ip = num2ip($domain);
+		my $ip = Socket::inet_ntoa(Socket::inet_aton($domain));
 
-		if (validaddr($ip)) {
-			$uri = URI->new($escape);
-			$uri->host($ip);
+		$uri = URI->new($escape);
+		$uri->host($ip);
 
-			$escape = $uri->as_string;
-		}
+		$escape = $uri->as_string;
 	}
 
 # 	$self->debug("1. $url => $escape\n");
@@ -1600,7 +1607,7 @@ sub request_full_hash {
 		}
 	}
 
-	my $url = "https://safebrowsing.clients.google.com/safebrowsing/gethash?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
+	my $url = $self->{server} . "gethash?client=api&apikey=" . $self->{key} . "&appver=$VERSION&pver=" . $self->{version};
 
 	my $prefix_list = join('', @$prefixes);
 	my $header = "$size:" . scalar @$prefixes * $size;
@@ -1777,6 +1784,11 @@ sub expand_range {
 
 =over 4
 
+=item 1.11
+
+Add dependency on IO::Socket::SSL.
+Remove dependency on Net::IPAddress.
+
 =item 1.10
 
 Force IPv4 to solve bug on CentOS.
@@ -1854,11 +1866,15 @@ Add support for Message Authentication Code (MAC)
 
 =head1 SEE ALSO
 
+Source code available at L<https://github.com/juliensobrier/Net-Google-SafeBrowsing2>.
+
 See L<Net::Google::SafeBrowsing2::Storage>, L<Net::Google::SafeBrowsing2::Sqlite> and L<Net::Google::SafeBrowsing2::MySQL> for information on storing and managing the Google Safe Browsing database.
 
 Google Safe Browsing v2 API: L<http://code.google.com/apis/safebrowsing/developers_guide_v2.html>
 
 L<Net::Google::SafeBrowsing> (Google Safe Browsing v1) is deprecated by Google since 12/01/2011.
+
+L<Net::Google::SafeBrowsing2> (Google Safe Browsing v2) will deprecated by Google on 12/01/2014.
 
 =head1 AUTHOR
 
